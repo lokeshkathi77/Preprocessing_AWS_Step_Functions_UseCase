@@ -1,0 +1,307 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Step Functions workflow for EC2 validation and ECS transaction processing
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: demo
+
+  Ec2InstanceId:
+    Type: String
+
+  EcsClusterArn:
+    Type: String
+
+  EcsTaskDefinitionArn:
+    Type: String
+
+  StepFunctionsRoleArn:
+    Type: String
+
+  PublicSubnetAId:
+    Type: AWS::EC2::Subnet::Id
+
+  PublicSubnetBId:
+    Type: AWS::EC2::Subnet::Id
+
+  EcsSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+
+  OutputBucketName:
+    Type: String
+
+  ContainerName:
+    Type: String
+    Default: transaction-processor
+
+Resources:
+  StateMachineLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/aws/vendedlogs/states/${EnvironmentName}-transaction-workflow"
+      RetentionInDays: 14
+
+  TransactionStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub "${EnvironmentName}-transaction-workflow"
+      StateMachineType: STANDARD
+      RoleArn: !Ref StepFunctionsRoleArn
+
+      DefinitionString: !Sub |
+        {
+          "Comment": "Validate the EC2 preprocessing instance and run the ECS transaction task",
+          "StartAt": "DescribeEC2",
+          "States": {
+            "DescribeEC2": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:ec2:describeInstances",
+              "Parameters": {
+                "InstanceIds": [
+                  "${Ec2InstanceId}"
+                ]
+              },
+              "ResultPath": "$.ec2Result",
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Ec2.RequestLimitExceeded",
+                    "Ec2.ServiceUnavailable",
+                    "States.TaskFailed"
+                  ],
+                  "IntervalSeconds": 5,
+                  "MaxAttempts": 3,
+                  "BackoffRate": 2
+                }
+              ],
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "ResultPath": "$.workflowError",
+                  "Next": "WorkflowFailed"
+                }
+              ],
+              "Next": "EvaluateEC2State"
+            },
+
+            "EvaluateEC2State": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.ec2Result.Reservations[0].Instances[0].State.Name",
+                  "StringEquals": "running",
+                  "Next": "ValidateEC2"
+                },
+                {
+                  "Variable": "$.ec2Result.Reservations[0].Instances[0].State.Name",
+                  "StringEquals": "stopped",
+                  "Next": "StartEC2"
+                },
+                {
+                  "Variable": "$.ec2Result.Reservations[0].Instances[0].State.Name",
+                  "StringEquals": "pending",
+                  "Next": "WaitForEC2"
+                },
+                {
+                  "Variable": "$.ec2Result.Reservations[0].Instances[0].State.Name",
+                  "StringEquals": "stopping",
+                  "Next": "WaitForEC2"
+                }
+              ],
+              "Default": "UnsupportedEC2State"
+            },
+
+            "StartEC2": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:ec2:startInstances",
+              "Parameters": {
+                "InstanceIds": [
+                  "${Ec2InstanceId}"
+                ]
+              },
+              "ResultPath": "$.startResult",
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Ec2.RequestLimitExceeded",
+                    "Ec2.ServiceUnavailable",
+                    "States.TaskFailed"
+                  ],
+                  "IntervalSeconds": 5,
+                  "MaxAttempts": 3,
+                  "BackoffRate": 2
+                }
+              ],
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "ResultPath": "$.workflowError",
+                  "Next": "WorkflowFailed"
+                }
+              ],
+              "Next": "WaitForEC2"
+            },
+
+            "WaitForEC2": {
+              "Type": "Wait",
+              "Seconds": 20,
+              "Next": "DescribeEC2"
+            },
+
+            "ValidateEC2": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "And": [
+                    {
+                      "Variable": "$.ec2Result.Reservations[0].Instances[0].InstanceId",
+                      "StringEquals": "${Ec2InstanceId}"
+                    },
+                    {
+                      "Variable": "$.ec2Result.Reservations[0].Instances[0].State.Name",
+                      "StringEquals": "running"
+                    }
+                  ],
+                  "Next": "RunECSTask"
+                }
+              ],
+              "Default": "EC2ValidationFailed"
+            },
+
+            "RunECSTask": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::ecs:runTask.sync",
+              "Parameters": {
+                "Cluster": "${EcsClusterArn}",
+                "TaskDefinition": "${EcsTaskDefinitionArn}",
+                "LaunchType": "FARGATE",
+                "PlatformVersion": "LATEST",
+                "NetworkConfiguration": {
+                  "AwsvpcConfiguration": {
+                    "Subnets": [
+                      "${PublicSubnetAId}",
+                      "${PublicSubnetBId}"
+                    ],
+                    "SecurityGroups": [
+                      "${EcsSecurityGroupId}"
+                    ],
+                    "AssignPublicIp": "ENABLED"
+                  }
+                },
+                "Overrides": {
+                  "ContainerOverrides": [
+                    {
+                      "Name": "${ContainerName}",
+                      "Environment": [
+                        {
+                          "Name": "INPUT_BUCKET",
+                          "Value.$": "$.bucket"
+                        },
+                        {
+                          "Name": "INPUT_KEY",
+                          "Value.$": "$.key"
+                        },
+                        {
+                          "Name": "OUTPUT_BUCKET",
+                          "Value": "${OutputBucketName}"
+                        },
+                        {
+                          "Name": "TRANSACTION_DATE",
+                          "Value.$": "$.transactionDate"
+                        },
+                        {
+                          "Name": "EXECUTION_ID",
+                          "Value.$": "$.executionId"
+                        },
+                        {
+                          "Name": "RUN_MODE",
+                          "Value": "s3"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              "ResultPath": "$.ecsResult",
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "ECS.AmazonECSException",
+                    "ECS.ThrottlingException",
+                    "AmazonECS.Unknown"
+                  ],
+                  "IntervalSeconds": 10,
+                  "MaxAttempts": 2,
+                  "BackoffRate": 2
+                }
+              ],
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "ResultPath": "$.workflowError",
+                  "Next": "WorkflowFailed"
+                }
+              ],
+              "Next": "WorkflowSucceeded"
+            },
+
+            "UnsupportedEC2State": {
+              "Type": "Fail",
+              "Error": "UnsupportedEC2State",
+              "Cause": "The EC2 preprocessing instance is in an unsupported state."
+            },
+
+            "EC2ValidationFailed": {
+              "Type": "Fail",
+              "Error": "EC2ValidationFailed",
+              "Cause": "The EC2 preprocessing instance could not be validated."
+            },
+
+            "WorkflowFailed": {
+              "Type": "Fail",
+              "Error": "TransactionWorkflowFailed",
+              "Cause": "EC2 validation or ECS transaction processing failed."
+            },
+
+            "WorkflowSucceeded": {
+              "Type": "Succeed"
+            }
+          }
+        }
+
+      LoggingConfiguration:
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt StateMachineLogGroup.Arn
+        IncludeExecutionData: true
+        Level: ALL
+
+      TracingConfiguration:
+        Enabled: true
+
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: TransactionWorkflow
+
+Outputs:
+  StateMachineArn:
+    Description: Step Functions state-machine ARN
+    Value: !Ref TransactionStateMachine
+
+  StateMachineName:
+    Description: Step Functions state-machine name
+    Value: !GetAtt TransactionStateMachine.Name
+
+  StateMachineLogGroupName:
+    Description: Step Functions CloudWatch log group
+    Value: !Ref StateMachineLogGroup
