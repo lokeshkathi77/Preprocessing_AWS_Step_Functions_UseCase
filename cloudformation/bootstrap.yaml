@@ -92,10 +92,12 @@ Resources:
                 Resource: !Ref ConnectionArn
               - Effect: Allow
                 Action:
+                  - cloudformation:CreateStack
                   - cloudformation:CreateChangeSet
                   - cloudformation:DescribeChangeSet
                   - cloudformation:DescribeStacks
                   - cloudformation:ExecuteChangeSet
+                  - cloudformation:UpdateStack
                   - cloudformation:ValidateTemplate
                 Resource: '*'
               - Effect: Allow
