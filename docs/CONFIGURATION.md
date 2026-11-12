@@ -27,3 +27,16 @@ parameter directly to the ECS stack.
 The worker expects a CSV object with an `amount` column by default. The
 optional `TRANSACTION_AMOUNT_COLUMN` environment variable can select a
 different column without changing the container code.
+
+The EC2 preprocessing step keeps every input row. Missing values use these
+field-specific defaults:
+
+| Field | Default |
+|---|---|
+| `transaction_id` | `UNKNOWN` |
+| `customer_id` | `UNKNOWN` |
+| `amount` | `0` |
+| `currency` | `UNKNOWN` |
+| `transaction_date` | `UNKNOWN` |
+
+The normalized file is passed to ECS; no reject file is generated.

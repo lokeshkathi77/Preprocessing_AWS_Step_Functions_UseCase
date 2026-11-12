@@ -27,6 +27,7 @@ Capture:
 
 - EC2 running in a private subnet with no public IPv4
 - Systems Manager managed-node status
+- Normalized transaction file containing field-specific defaults
 - ECS task definition revision
 - ECS task image URI supplied as a deployment parameter
 - ECS task network configuration with public IP disabled
