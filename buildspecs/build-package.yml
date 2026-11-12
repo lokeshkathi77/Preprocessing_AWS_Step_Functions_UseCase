@@ -3,6 +3,7 @@ version: 0.2
 phases:
   build:
     commands:
+      - aws s3 cp application/preprocess.py "s3://$ARTIFACT_BUCKET/$ENVIRONMENT_NAME/scripts/preprocess.py"
       - >-
         aws cloudformation package
         --template-file infrastructure/application/application-root.yaml

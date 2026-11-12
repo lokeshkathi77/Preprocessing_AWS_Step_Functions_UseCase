@@ -3,7 +3,10 @@
 The pipeline bootstrap is the only manual CloudFormation deployment. It
 creates the artifact bucket, CodeBuild projects, CodePipeline, and the shared
 `InfrastructureDeploymentRole`. Later infrastructure changes are deployed by
-pushes to the configured GitHub branch.
+pushes to the configured GitHub branch. The package stage uploads
+`application/preprocess.py` to the artifact bucket; EC2 downloads and runs
+that script through Systems Manager, so Docker is not installed or used on
+EC2.
 
 ## Prerequisites
 

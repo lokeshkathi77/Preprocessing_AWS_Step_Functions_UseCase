@@ -21,6 +21,12 @@ Parameters:
     Type: Number
     Default: 14
 
+  PreprocessingScriptBucketName:
+    Type: String
+
+  PreprocessingScriptKey:
+    Type: String
+
   TaskCpu:
     Type: String
     Default: "256"
@@ -80,6 +86,13 @@ Resources:
         EnvironmentName: !Ref EnvironmentName
         InputBucketArn: !GetAtt StorageStack.Outputs.InputBucketArn
         OutputBucketArn: !GetAtt StorageStack.Outputs.OutputBucketArn
+        PreprocessingScriptBucketArn: !Sub
+          - "arn:${AWS::Partition}:s3:::${BucketName}"
+          - BucketName: !Ref PreprocessingScriptBucketName
+        PreprocessingScriptObjectArn: !Sub
+          - "arn:${AWS::Partition}:s3:::${BucketName}/${ScriptKey}"
+          - BucketName: !Ref PreprocessingScriptBucketName
+            ScriptKey: !Ref PreprocessingScriptKey
         EcsTaskDefinitionArn: "*"
 
   Ec2Stack:
@@ -94,6 +107,8 @@ Resources:
         EnvironmentName: !Ref EnvironmentName
         InstanceType: !Ref Ec2InstanceType
         EbsVolumeSize: !Ref EbsVolumeSize
+        PreprocessingScriptBucketName: !Ref PreprocessingScriptBucketName
+        PreprocessingScriptKey: !Ref PreprocessingScriptKey
         SubnetId: !GetAtt NetworkingStack.Outputs.PublicSubnetAId
         SecurityGroupId: !GetAtt SecurityGroupsStack.Outputs.Ec2SecurityGroupId
         InstanceProfileName: !GetAtt IamStack.Outputs.Ec2InstanceProfileName
@@ -143,6 +158,8 @@ Resources:
         OutputBucketName: !GetAtt StorageStack.Outputs.OutputBucketName
         ContainerName: !GetAtt EcsTaskDefinitionStack.Outputs.ContainerName
         LogRetentionInDays: !Ref LogRetentionInDays
+        PreprocessingScriptBucketName: !Ref PreprocessingScriptBucketName
+        PreprocessingScriptKey: !Ref PreprocessingScriptKey
 
 Outputs:
   VpcId:

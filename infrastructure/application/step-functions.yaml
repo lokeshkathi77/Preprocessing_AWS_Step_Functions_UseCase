@@ -38,6 +38,12 @@ Parameters:
     Type: Number
     Default: 14
 
+  PreprocessingScriptBucketName:
+    Type: String
+
+  PreprocessingScriptKey:
+    Type: String
+
 Resources:
   StateMachineLogGroup:
     Type: AWS::Logs::LogGroup
@@ -172,10 +178,122 @@ Resources:
                       "StringEquals": "running"
                     }
                   ],
-                  "Next": "RunECSTask"
+                  "Next": "RunPreprocessing"
                 }
               ],
               "Default": "EC2ValidationFailed"
+            },
+
+            "RunPreprocessing": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:ssm:sendCommand",
+              "Parameters": {
+                "DocumentName": "AWS-RunShellScript",
+                "InstanceIds": [
+                  "${Ec2InstanceId}"
+                ],
+                "Parameters": {
+                  "commands.$": "States.Array(States.Format('set -eu; mkdir -p /opt/transaction-preprocessor/run; aws s3 cp s3://{}/{} /opt/transaction-preprocessor/run/input.csv; aws s3 cp s3://{}/{} /opt/transaction-preprocessor/run/preprocess.py; chmod 755 /opt/transaction-preprocessor/run/preprocess.py; python3 /opt/transaction-preprocessor/run/preprocess.py --input /opt/transaction-preprocessor/run/input.csv --output /opt/transaction-preprocessor/run/cleaned.csv --rejected /opt/transaction-preprocessor/run/rejected.csv; aws s3 cp /opt/transaction-preprocessor/run/cleaned.csv s3://{}/processed/{}/{}/transactions_cleaned.csv; aws s3 cp /opt/transaction-preprocessor/run/rejected.csv s3://{}/errors/{}/{}/rejected_transactions.csv', $.bucket, $.key, '${PreprocessingScriptBucketName}', '${PreprocessingScriptKey}', '${OutputBucketName}', $.transactionDate, $.executionId, '${OutputBucketName}', $.transactionDate, $.executionId))"
+                }
+              },
+              "ResultPath": "$.preprocessingCommand",
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Ssm.AmazonSSMException",
+                    "Ssm.ThrottlingException",
+                    "States.TaskFailed"
+                  ],
+                  "IntervalSeconds": 5,
+                  "MaxAttempts": 3,
+                  "BackoffRate": 2
+                }
+              ],
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "ResultPath": "$.workflowError",
+                  "Next": "WorkflowFailed"
+                }
+              ],
+              "Next": "WaitForPreprocessing"
+            },
+
+            "WaitForPreprocessing": {
+              "Type": "Wait",
+              "Seconds": 10,
+              "Next": "GetPreprocessingStatus"
+            },
+
+            "GetPreprocessingStatus": {
+              "Type": "Task",
+              "Resource": "arn:${AWS::Partition}:states:::aws-sdk:ssm:getCommandInvocation",
+              "Parameters": {
+                "CommandId.$": "$.preprocessingCommand.Command.CommandId",
+                "InstanceId": "${Ec2InstanceId}"
+              },
+              "ResultPath": "$.preprocessingStatus",
+              "Retry": [
+                {
+                  "ErrorEquals": [
+                    "Ssm.InvocationDoesNotExist",
+                    "Ssm.AmazonSSMException",
+                    "States.TaskFailed"
+                  ],
+                  "IntervalSeconds": 5,
+                  "MaxAttempts": 5,
+                  "BackoffRate": 2
+                }
+              ],
+              "Catch": [
+                {
+                  "ErrorEquals": [
+                    "States.ALL"
+                  ],
+                  "ResultPath": "$.workflowError",
+                  "Next": "WorkflowFailed"
+                }
+              ],
+              "Next": "EvaluatePreprocessingStatus"
+            },
+
+            "EvaluatePreprocessingStatus": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.preprocessingStatus.Status",
+                  "StringEquals": "Success",
+                  "Next": "SetPreprocessingPaths"
+                },
+                {
+                  "Variable": "$.preprocessingStatus.Status",
+                  "StringEquals": "Pending",
+                  "Next": "WaitForPreprocessing"
+                },
+                {
+                  "Variable": "$.preprocessingStatus.Status",
+                  "StringEquals": "InProgress",
+                  "Next": "WaitForPreprocessing"
+                },
+                {
+                  "Variable": "$.preprocessingStatus.Status",
+                  "StringEquals": "Delayed",
+                  "Next": "WaitForPreprocessing"
+                }
+              ],
+              "Default": "PreprocessingFailed"
+            },
+
+            "SetPreprocessingPaths": {
+              "Type": "Pass",
+              "Parameters": {
+                "bucket": "${OutputBucketName}",
+                "key.$": "States.Format('processed/{}/{}/transactions_cleaned.csv', $.transactionDate, $.executionId)"
+              },
+              "ResultPath": "$.preprocessedInput",
+              "Next": "RunECSTask"
             },
 
             "RunECSTask": {
@@ -205,11 +323,11 @@ Resources:
                       "Environment": [
                         {
                           "Name": "INPUT_BUCKET",
-                          "Value.$": "$.bucket"
+                          "Value.$": "$.preprocessedInput.bucket"
                         },
                         {
                           "Name": "INPUT_KEY",
-                          "Value.$": "$.key"
+                          "Value.$": "$.preprocessedInput.key"
                         },
                         {
                           "Name": "OUTPUT_BUCKET",
@@ -267,6 +385,12 @@ Resources:
               "Type": "Fail",
               "Error": "EC2ValidationFailed",
               "Cause": "The EC2 preprocessing instance could not be validated."
+            },
+
+            "PreprocessingFailed": {
+              "Type": "Fail",
+              "Error": "PreprocessingFailed",
+              "Cause": "The EC2 preprocessing script failed."
             },
 
             "WorkflowFailed": {

@@ -12,6 +12,12 @@ Parameters:
   OutputBucketArn:
     Type: String
 
+  PreprocessingScriptBucketArn:
+    Type: String
+
+  PreprocessingScriptObjectArn:
+    Type: String
+
   EcsTaskDefinitionArn:
     Type: String
     Default: "*"
@@ -54,6 +60,27 @@ Resources:
                   - s3:GetObjectVersion
                 Resource:
                   - !Sub "${InputBucketArn}/*"
+
+              - Sid: ReadPreprocessingScript
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - !Ref PreprocessingScriptObjectArn
+
+              - Sid: LocatePreprocessingScriptBucket
+                Effect: Allow
+                Action:
+                  - s3:GetBucketLocation
+                Resource:
+                  - !Ref PreprocessingScriptBucketArn
+
+              - Sid: WritePreprocessingOutputs
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource:
+                  - !Sub "${OutputBucketArn}/*"
 
       Tags:
         - Key: Environment
@@ -174,6 +201,13 @@ Resources:
                   - ec2:StartInstances
                 Resource:
                   - !Sub "arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+
+              - Sid: RunEc2Preprocessing
+                Effect: Allow
+                Action:
+                  - ssm:SendCommand
+                  - ssm:GetCommandInvocation
+                Resource: "*"
 
         - PolicyName: EcsWorkflowAccess
           PolicyDocument:

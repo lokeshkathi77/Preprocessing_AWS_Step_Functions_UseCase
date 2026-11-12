@@ -27,6 +27,12 @@ Parameters:
     Type: Number
     Default: 10
 
+  PreprocessingScriptBucketName:
+    Type: String
+
+  PreprocessingScriptKey:
+    Type: String
+
   LatestAmiId:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
     Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
@@ -62,18 +68,23 @@ Resources:
         Fn::Base64: !Sub |
           #!/bin/bash
           set -euo pipefail
+          trap 'echo FAILED > /opt/transaction-preprocessor/status' ERR
 
           mkdir -p /opt/transaction-preprocessor
+          dnf install -y python3
+          echo BOOTSTRAPPING > /opt/transaction-preprocessor/status
 
-          cat > /opt/transaction-preprocessor/status <<'EOF'
-          READY
-          EOF
+          aws s3 cp "s3://${PreprocessingScriptBucketName}/${PreprocessingScriptKey}" \
+            /opt/transaction-preprocessor/preprocess.py
+          chmod 755 /opt/transaction-preprocessor/preprocess.py
+          echo READY > /opt/transaction-preprocessor/status
 
           cat > /opt/transaction-preprocessor/metadata.json <<EOF
           {
             "environment": "${EnvironmentName}",
             "purpose": "TransactionPreprocessor",
-            "status": "READY"
+            "status": "READY",
+            "script": "/opt/transaction-preprocessor/preprocess.py"
           }
           EOF
 

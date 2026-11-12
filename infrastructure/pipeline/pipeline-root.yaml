@@ -217,6 +217,8 @@ Resources:
         EnvironmentVariables:
           - Name: ARTIFACT_BUCKET
             Value: !Ref ArtifactBucket
+          - Name: ENVIRONMENT_NAME
+            Value: !Ref EnvironmentName
       Tags:
         - Key: Environment
           Value: !Ref EnvironmentName
@@ -290,7 +292,7 @@ Resources:
                 RoleArn: !GetAtt InfrastructureDeploymentRole.Arn
                 ParameterOverrides: !Sub
                   - >-
-                    {"EnvironmentName":"${EnvironmentName}","ContainerImageUri":"${ContainerImageUri}","Ec2InstanceType":"${Ec2InstanceType}","EbsVolumeSize":"${EbsVolumeSize}","LogRetentionInDays":"${LogRetentionInDays}","VpcCidr":"${VpcCidr}","PublicSubnetACidr":"${PublicSubnetACidr}","PublicSubnetBCidr":"${PublicSubnetBCidr}","TaskCpu":"${TaskCpu}","TaskMemory":"${TaskMemory}"}
+                    {"EnvironmentName":"${EnvironmentName}","ContainerImageUri":"${ContainerImageUri}","Ec2InstanceType":"${Ec2InstanceType}","EbsVolumeSize":"${EbsVolumeSize}","LogRetentionInDays":"${LogRetentionInDays}","PreprocessingScriptBucketName":"${ArtifactBucket}","PreprocessingScriptKey":"${EnvironmentName}/scripts/preprocess.py","VpcCidr":"${VpcCidr}","PublicSubnetACidr":"${PublicSubnetACidr}","PublicSubnetBCidr":"${PublicSubnetBCidr}","TaskCpu":"${TaskCpu}","TaskMemory":"${TaskMemory}"}
                   - EnvironmentName: !Ref EnvironmentName
                     ContainerImageUri: !Ref ContainerImageUri
                     Ec2InstanceType: !Ref Ec2InstanceType
