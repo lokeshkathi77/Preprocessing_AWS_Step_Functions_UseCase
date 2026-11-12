@@ -1,0 +1,20 @@
+Manual deployment test
+======================
+
+Date: 2026-11-12T12:40:38+00:00
+Region: ap-south-1
+Application stack: demo-transaction-application
+Stack status: CREATE_COMPLETE
+State machine: arn:aws:states:ap-south-1:965825500875:stateMachine:demo-transaction-workflow
+Execution ARN: arn:aws:states:ap-south-1:965825500875:execution:demo-transaction-workflow:demo-20261112-123413
+Execution status: SUCCEEDED
+EC2 instance: i-038c21ab3dd0c906e
+ECS cluster: arn:aws:ecs:ap-south-1:965825500875:cluster/demo-transaction-cluster
+ECS task definition: arn:aws:ecs:ap-south-1:965825500875:task-definition/demo-transaction-processor:1
+ECS task: arn:aws:ecs:ap-south-1:965825500875:task/demo-transaction-cluster/d9146b9c8864449aa2bff95959615344
+ECS exit code: 0
+Input bucket: demo-transaction-applicatio-transactioninputbucket-wnte4wf3gg7i
+Output bucket: demo-transaction-applicati-transactionoutputbucket-czpr6nmsuvu5
+Input records: 4
+Valid records: 3
+Rejected records: 1
