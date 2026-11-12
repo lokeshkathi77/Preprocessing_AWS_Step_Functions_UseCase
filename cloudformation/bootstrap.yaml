@@ -14,6 +14,8 @@ Parameters:
     Type: String
   VpcCidr:
     Type: String
+  PublicSubnetCidr:
+    Type: String
   PrivateSubnetACidr:
     Type: String
   PrivateSubnetBCidr:
@@ -164,9 +166,10 @@ Resources:
                 StackName: !Sub '${ApplicationStackName}-Network'
                 TemplatePath: Source::cloudformation/network.yaml
                 ParameterOverrides: !Sub
-                  - '{"EnvironmentName":"${EnvironmentName}","VpcCidr":"${VpcCidr}","PrivateSubnetACidr":"${PrivateSubnetACidr}","PrivateSubnetBCidr":"${PrivateSubnetBCidr}"}'
+                  - '{"EnvironmentName":"${EnvironmentName}","VpcCidr":"${VpcCidr}","PublicSubnetCidr":"${PublicSubnetCidr}","PrivateSubnetACidr":"${PrivateSubnetACidr}","PrivateSubnetBCidr":"${PrivateSubnetBCidr}"}'
                   - EnvironmentName: !Ref EnvironmentName
                     VpcCidr: !Ref VpcCidr
+                    PublicSubnetCidr: !Ref PublicSubnetCidr
                     PrivateSubnetACidr: !Ref PrivateSubnetACidr
                     PrivateSubnetBCidr: !Ref PrivateSubnetBCidr
                 RoleArn: !GetAtt InfrastructureDeploymentRole.Arn

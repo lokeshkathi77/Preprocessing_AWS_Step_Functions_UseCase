@@ -7,6 +7,7 @@ embedded in templates or scripts.
 |---|---|
 | `EnvironmentName` | Environment tag and naming context |
 | `VpcCidr` | VPC address range |
+| `PublicSubnetCidr` | Public subnet range used only for the NAT gateway |
 | `PrivateSubnetACidr` | Private subnet A range |
 | `PrivateSubnetBCidr` | Private subnet B range |
 | `ContainerImage` | AWS-provided or approved existing image URI |
@@ -40,3 +41,6 @@ field-specific defaults:
 | `transaction_date` | `UNKNOWN` |
 
 The normalized file is passed to ECS; no reject file is generated.
+
+Private workloads use the NAT gateway for outbound access to SSM, S3, and the
+public AWS-provided container image. EC2 and ECS do not receive public IPs.

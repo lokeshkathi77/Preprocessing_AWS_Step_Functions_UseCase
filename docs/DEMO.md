@@ -40,7 +40,8 @@ Start Step Functions with:
 ```json
 {
   "instanceId": "<CloudFormation EC2 output>",
-  "transactionFile": "s3://<transaction-bucket>/daily/transactions.csv"
+  "transactionFile": "s3://<dynamic-transaction-bucket>/incoming/transactions.csv",
+  "processedFile": "s3://<dynamic-transaction-bucket>/processed/transactions.csv"
 }
 ```
 

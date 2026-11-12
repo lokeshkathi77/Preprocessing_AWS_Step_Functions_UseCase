@@ -33,7 +33,7 @@ Resources:
                   {
                     "Variable": "$.ec2Description.Reservations[0].Instances[0].State.Name",
                     "StringEquals": "running",
-                    "Next": "RunECSTask"
+                    "Next": "PreprocessTransactions"
                   }
                 ],
                 "Default": "StartEC2"
@@ -50,6 +50,54 @@ Resources:
                 "Type": "Wait",
                 "Seconds": 20,
                 "Next": "CheckEC2"
+              },
+              "PreprocessTransactions": {
+                "Type": "Task",
+                "Resource": "arn:${AWS::Partition}:states:::aws-sdk:ssm:sendCommand",
+                "Parameters": {
+                  "DocumentName": "AWS-RunShellScript",
+                  "InstanceIds": ["${EC2InstanceId}"],
+                  "Parameters": {
+                    "commands.$": "States.Array(\"set -eu\", States.Format(\"export INPUT_FILE='{}'\", $.transactionFile), States.Format(\"export OUTPUT_FILE='{}'\", $.processedFile), \"aws s3 cp \\\"$${INPUT_FILE}\\\" /tmp/transactions.csv\", \"amount_index=$(awk -F, -v column=amount 'NR==1 { for (i=1; i<=NF; i++) if ($i==column) { print i; exit } }' /tmp/transactions.csv)\", \"test -n \\\"$${amount_index}\\\"\", \"awk -F, -v amount_index=\\\"$${amount_index}\\\" 'BEGIN { OFS=FS } NR==1 { print; next } { for (i=1; i<=NF; i++) if ($i==\\\"\\\") { if (i==amount_index) $i=\\\"0\\\"; else $i=\\\"UNKNOWN\\\" } print }' /tmp/transactions.csv > /tmp/normalized-transactions.csv\", \"output_bucket=\\\"$${OUTPUT_FILE#s3://}\\\"\", \"output_bucket=\\\"$${output_bucket%%/*}\\\"\", \"output_key=\\\"$${OUTPUT_FILE#s3://$${output_bucket}/}\\\"\", \"aws s3 cp /tmp/normalized-transactions.csv \\\"s3://$${output_bucket}/$${output_key}\\\"\")"
+                  }
+                },
+                "ResultPath": "$.preprocessCommand",
+                "Next": "WaitForPreprocess"
+              },
+              "WaitForPreprocess": {
+                "Type": "Wait",
+                "Seconds": 10,
+                "Next": "GetPreprocessStatus"
+              },
+              "GetPreprocessStatus": {
+                "Type": "Task",
+                "Resource": "arn:${AWS::Partition}:states:::aws-sdk:ssm:getCommandInvocation",
+                "Parameters": {
+                  "CommandId.$": "$.preprocessCommand.Command.CommandId",
+                  "InstanceId": "${EC2InstanceId}"
+                },
+                "ResultPath": "$.preprocessStatus",
+                "Next": "PreprocessComplete?"
+              },
+              "PreprocessComplete?": {
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.preprocessStatus.Status",
+                    "StringEquals": "Success",
+                    "Next": "RunECSTask"
+                  },
+                  {
+                    "Variable": "$.preprocessStatus.Status",
+                    "StringEquals": "Failed",
+                    "Next": "PreprocessFailed"
+                  }
+                ],
+                "Default": "WaitForPreprocess"
+              },
+              "PreprocessFailed": {
+                "Type": "Fail",
+                "Cause": "EC2 transaction preprocessing failed"
               },
               "RunECSTask": {
                 "Type": "Task",
@@ -72,7 +120,7 @@ Resources:
                         "Environment": [
                           {
                             "Name": "TRANSACTION_FILE",
-                            "Value.$": "$.transactionFile"
+                            "Value.$": "$.processedFile"
                           }
                         ]
                       }

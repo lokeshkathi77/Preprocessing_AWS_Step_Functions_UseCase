@@ -25,6 +25,33 @@ Resources:
       Roles:
         - !Ref EC2InstanceRole
 
+  EC2TransactionAccess:
+    Type: AWS::IAM::Policy
+    Properties:
+      Roles:
+        - !Ref EC2InstanceRole
+      PolicyName: TransactionBucketReadWrite
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+            Resource:
+              - !Sub
+                - arn:${AWS::Partition}:s3:::${BucketName}/*
+                - BucketName:
+                    Fn::ImportValue: !Sub '${EnvironmentName}-TransactionBucketName'
+          - Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource:
+              - !Sub
+                - arn:${AWS::Partition}:s3:::${BucketName}
+                - BucketName:
+                    Fn::ImportValue: !Sub '${EnvironmentName}-TransactionBucketName'
+
   ECSTaskExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -81,6 +108,9 @@ Resources:
                 Action:
                   - ec2:DescribeInstances
                   - ec2:StartInstances
+                  - ssm:SendCommand
+                  - ssm:GetCommandInvocation
+                  - ssm:ListCommandInvocations
                   - ecs:RunTask
                   - ecs:DescribeTasks
                   - ecs:StopTask
