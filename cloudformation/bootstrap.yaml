@@ -18,11 +18,25 @@ Parameters:
     Type: String
   PrivateSubnetBCidr:
     Type: String
-  TransactionBucketName:
-    Type: String
-    Description: Existing S3 bucket containing transaction files.
 Resources:
   GeneratedArtifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+
+  TransactionBucket:
     Type: AWS::S3::Bucket
     DeletionPolicy: Retain
     UpdateReplacePolicy: Retain
@@ -294,7 +308,7 @@ Resources:
                     VpcCidr: !Ref VpcCidr
                     PrivateSubnetACidr: !Ref PrivateSubnetACidr
                     PrivateSubnetBCidr: !Ref PrivateSubnetBCidr
-                    TransactionBucketName: !Ref TransactionBucketName
+                    TransactionBucketName: !Ref TransactionBucket
                 RoleArn: !GetAtt InfrastructureDeploymentRole.Arn
               InputArtifacts:
                 - Name: Packaged
@@ -308,3 +322,5 @@ Outputs:
     Value: !Ref GeneratedArtifactBucket
   TransactionRepositoryUri:
     Value: !GetAtt TransactionRepository.RepositoryUri
+  TransactionBucketName:
+    Value: !Ref TransactionBucket
