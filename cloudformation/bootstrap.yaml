@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: One-time AWS CodePipeline foundation for GitHub-driven CloudFormation.
+Description: GitHub-driven CodePipeline foundation without CodeBuild.
 
 Parameters:
   ConnectionArn:
@@ -18,6 +18,10 @@ Parameters:
     Type: String
   PrivateSubnetBCidr:
     Type: String
+  ContainerImage:
+    Type: String
+    Description: Existing AWS-provided or approved ECR image URI.
+
 Resources:
   GeneratedArtifactBucket:
     Type: AWS::S3::Bucket
@@ -53,15 +57,6 @@ Resources:
       VersioningConfiguration:
         Status: Enabled
 
-  TransactionRepository:
-    Type: AWS::ECR::Repository
-    Properties:
-      ImageScanningConfiguration:
-        ScanOnPush: true
-      ImageTagMutability: IMMUTABLE
-      EncryptionConfiguration:
-        EncryptionType: AES256
-
   PipelineServiceRole:
     Type: AWS::IAM::Role
     Properties:
@@ -95,17 +90,11 @@ Resources:
                 Resource: !Ref ConnectionArn
               - Effect: Allow
                 Action:
-                  - codebuild:StartBuild
-                  - codebuild:BatchGetBuilds
-                Resource:
-                  - !GetAtt PackagingProject.Arn
-                  - !GetAtt ImageBuildProject.Arn
-              - Effect: Allow
-                Action:
                   - cloudformation:CreateChangeSet
                   - cloudformation:DescribeChangeSet
                   - cloudformation:DescribeStacks
                   - cloudformation:ExecuteChangeSet
+                  - cloudformation:ValidateTemplate
                 Resource: '*'
 
   InfrastructureDeploymentRole:
@@ -130,7 +119,6 @@ Resources:
                   - cloudformation:*
                   - ec2:*
                   - ecs:*
-                  - ecr:*
                   - iam:*
                   - logs:*
                   - states:*
@@ -138,105 +126,6 @@ Resources:
                   - s3:GetObjectVersion
                   - s3:ListBucket
                 Resource: '*'
-
-  PackagingServiceRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: codebuild.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: Packaging
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - s3:GetObject
-                  - s3:GetObjectVersion
-                  - s3:PutObject
-                  - s3:ListBucket
-                Resource:
-                  - !GetAtt GeneratedArtifactBucket.Arn
-                  - !Sub '${GeneratedArtifactBucket.Arn}/*'
-
-  PackagingProject:
-    Type: AWS::CodeBuild::Project
-    Properties:
-      ServiceRole: !GetAtt PackagingServiceRole.Arn
-      Artifacts:
-        Type: CODEPIPELINE
-      Source:
-        Type: CODEPIPELINE
-      Environment:
-        ComputeType: BUILD_GENERAL1_SMALL
-        Image: aws/codebuild/standard:7.0
-        Type: LINUX_CONTAINER
-        EnvironmentVariables:
-          - Name: ARTIFACT_BUCKET
-            Value: !Ref GeneratedArtifactBucket
-
-  ImageBuildServiceRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: codebuild.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: ImageBuild
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - ecr:GetAuthorizationToken
-                Resource: '*'
-              - Effect: Allow
-                Action:
-                  - ecr:BatchCheckLayerAvailability
-                  - ecr:CompleteLayerUpload
-                  - ecr:InitiateLayerUpload
-                  - ecr:PutImage
-                  - ecr:UploadLayerPart
-                Resource: !GetAtt TransactionRepository.Arn
-
-  ImageBuildProject:
-    Type: AWS::CodeBuild::Project
-    Properties:
-      ServiceRole: !GetAtt ImageBuildServiceRole.Arn
-      Artifacts:
-        Type: CODEPIPELINE
-      Source:
-        Type: CODEPIPELINE
-        BuildSpec: buildspec-image.yml
-      Environment:
-        ComputeType: BUILD_GENERAL1_SMALL
-        Image: aws/codebuild/standard:7.0
-        PrivilegedMode: true
-        Type: LINUX_CONTAINER
-        EnvironmentVariables:
-          - Name: ECR_REPOSITORY_URI
-            Value: !GetAtt TransactionRepository.RepositoryUri
 
   DeploymentPipeline:
     Type: AWS::CodePipeline::Pipeline
@@ -261,37 +150,9 @@ Resources:
                 DetectChanges: true
               OutputArtifacts:
                 - Name: Source
-        - Name: Package
+        - Name: Network
           Actions:
-            - Name: PackageTemplates
-              ActionTypeId:
-                Category: Build
-                Owner: AWS
-                Provider: CodeBuild
-                Version: '1'
-              Configuration:
-                ProjectName: !Ref PackagingProject
-              InputArtifacts:
-                - Name: Source
-              OutputArtifacts:
-                - Name: Packaged
-        - Name: BuildImage
-          Actions:
-            - Name: BuildAndPushImage
-              ActionTypeId:
-                Category: Build
-                Owner: AWS
-                Provider: CodeBuild
-                Version: '1'
-              Configuration:
-                ProjectName: !Ref ImageBuildProject
-              InputArtifacts:
-                - Name: Source
-              Namespace: ImageBuild
-              RunOrder: 1
-        - Name: Deploy
-          Actions:
-            - Name: CloudFormation
+            - Name: DeployNetwork
               ActionTypeId:
                 Category: Deploy
                 Owner: AWS
@@ -300,18 +161,94 @@ Resources:
               Configuration:
                 ActionMode: CREATE_UPDATE
                 Capabilities: CAPABILITY_NAMED_IAM
-                StackName: !Ref ApplicationStackName
-                TemplatePath: Packaged::packaged.yaml
+                StackName: !Sub '${ApplicationStackName}-Network'
+                TemplatePath: Source::cloudformation/network.yaml
                 ParameterOverrides: !Sub
-                  - '{"EnvironmentName":"${EnvironmentName}","VpcCidr":"${VpcCidr}","PrivateSubnetACidr":"${PrivateSubnetACidr}","PrivateSubnetBCidr":"${PrivateSubnetBCidr}","ContainerImage":"#{ImageBuild.IMAGE_URI}","TransactionBucketName":"${TransactionBucketName}"}'
+                  - '{"EnvironmentName":"${EnvironmentName}","VpcCidr":"${VpcCidr}","PrivateSubnetACidr":"${PrivateSubnetACidr}","PrivateSubnetBCidr":"${PrivateSubnetBCidr}"}'
                   - EnvironmentName: !Ref EnvironmentName
                     VpcCidr: !Ref VpcCidr
                     PrivateSubnetACidr: !Ref PrivateSubnetACidr
                     PrivateSubnetBCidr: !Ref PrivateSubnetBCidr
-                    TransactionBucketName: !Ref TransactionBucket
                 RoleArn: !GetAtt InfrastructureDeploymentRole.Arn
               InputArtifacts:
-                - Name: Packaged
+                - Name: Source
+        - Name: IAM
+          Actions:
+            - Name: DeployIAM
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_NAMED_IAM
+                StackName: !Sub '${ApplicationStackName}-IAM'
+                TemplatePath: Source::cloudformation/iam.yaml
+                ParameterOverrides: !Sub
+                  - '{"EnvironmentName":"${EnvironmentName}"}'
+                  - EnvironmentName: !Ref EnvironmentName
+                RoleArn: !GetAtt InfrastructureDeploymentRole.Arn
+              InputArtifacts:
+                - Name: Source
+        - Name: EC2
+          Actions:
+            - Name: DeployEC2
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_NAMED_IAM
+                StackName: !Sub '${ApplicationStackName}-EC2'
+                TemplatePath: Source::cloudformation/ec2.yaml
+                ParameterOverrides: !Sub
+                  - '{"EnvironmentName":"${EnvironmentName}"}'
+                  - EnvironmentName: !Ref EnvironmentName
+                RoleArn: !GetAtt InfrastructureDeploymentRole.Arn
+              InputArtifacts:
+                - Name: Source
+        - Name: ECS
+          Actions:
+            - Name: DeployECS
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_NAMED_IAM
+                StackName: !Sub '${ApplicationStackName}-ECS'
+                TemplatePath: Source::cloudformation/ecs.yaml
+                ParameterOverrides: !Sub
+                  - '{"EnvironmentName":"${EnvironmentName}","ContainerImage":"${ContainerImage}"}'
+                  - EnvironmentName: !Ref EnvironmentName
+                    ContainerImage: !Ref ContainerImage
+                RoleArn: !GetAtt InfrastructureDeploymentRole.Arn
+              InputArtifacts:
+                - Name: Source
+        - Name: StepFunctions
+          Actions:
+            - Name: DeployStepFunctions
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_NAMED_IAM
+                StackName: !Sub '${ApplicationStackName}-StepFunctions'
+                TemplatePath: Source::cloudformation/stepfunctions.yaml
+                ParameterOverrides: !Sub
+                  - '{"EnvironmentName":"${EnvironmentName}"}'
+                  - EnvironmentName: !Ref EnvironmentName
+                RoleArn: !GetAtt InfrastructureDeploymentRole.Arn
+              InputArtifacts:
+                - Name: Source
 
 Outputs:
   PipelineName:
@@ -320,7 +257,7 @@ Outputs:
     Value: !GetAtt InfrastructureDeploymentRole.Arn
   ArtifactBucketName:
     Value: !Ref GeneratedArtifactBucket
-  TransactionRepositoryUri:
-    Value: !GetAtt TransactionRepository.RepositoryUri
   TransactionBucketName:
     Value: !Ref TransactionBucket
+    Export:
+      Name: !Sub '${EnvironmentName}-TransactionBucketName'

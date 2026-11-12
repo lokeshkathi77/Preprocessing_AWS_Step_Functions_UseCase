@@ -4,32 +4,24 @@ Description: Private EC2 preprocessing instance.
 Parameters:
   EnvironmentName:
     Type: String
-  SubnetId:
-    Type: AWS::EC2::Subnet::Id
-  SecurityGroupId:
-    Type: AWS::EC2::SecurityGroup::Id
-  InstanceProfileName:
-    Type: String
-  InstanceType:
-    Type: String
-  EbsVolumeSize:
-    Type: Number
 
 Resources:
   PreprocessingInstance:
     Type: AWS::EC2::Instance
     Properties:
       ImageId: '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}'
-      InstanceType: !Ref InstanceType
-      IamInstanceProfile: !Ref InstanceProfileName
-      SubnetId: !Ref SubnetId
+      InstanceType: t3.micro
+      IamInstanceProfile:
+        Fn::ImportValue: !Sub '${EnvironmentName}-EC2InstanceProfileName'
+      SubnetId:
+        Fn::ImportValue: !Sub '${EnvironmentName}-PrivateSubnetAId'
       SecurityGroupIds:
-        - !Ref SecurityGroupId
+        - Fn::ImportValue: !Sub '${EnvironmentName}-EC2SecurityGroupId'
       BlockDeviceMappings:
         - DeviceName: /dev/xvda
           Ebs:
             Encrypted: true
-            VolumeSize: !Ref EbsVolumeSize
+            VolumeSize: 8
             VolumeType: gp3
       Tags:
         - Key: Name
@@ -40,3 +32,5 @@ Resources:
 Outputs:
   InstanceId:
     Value: !Ref PreprocessingInstance
+    Export:
+      Name: !Sub '${EnvironmentName}-EC2InstanceId'

@@ -103,11 +103,21 @@ Resources:
 Outputs:
   VpcId:
     Value: !Ref VPC
+    Export:
+      Name: !Sub '${EnvironmentName}-VpcId'
   PrivateSubnetAId:
     Value: !Ref PrivateSubnetA
+    Export:
+      Name: !Sub '${EnvironmentName}-PrivateSubnetAId'
   PrivateSubnetBId:
     Value: !Ref PrivateSubnetB
+    Export:
+      Name: !Sub '${EnvironmentName}-PrivateSubnetBId'
   EC2SecurityGroupId:
     Value: !GetAtt EC2SecurityGroup.GroupId
+    Export:
+      Name: !Sub '${EnvironmentName}-EC2SecurityGroupId'
   ECSSecurityGroupId:
     Value: !GetAtt ECSSecurityGroup.GroupId
+    Export:
+      Name: !Sub '${EnvironmentName}-ECSSecurityGroupId'

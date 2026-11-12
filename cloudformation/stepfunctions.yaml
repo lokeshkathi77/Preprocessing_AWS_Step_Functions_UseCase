@@ -4,27 +4,14 @@ Description: Step Functions workflow for EC2 validation and ECS processing.
 Parameters:
   EnvironmentName:
     Type: String
-  EC2InstanceId:
-    Type: String
-  ECSClusterArn:
-    Type: String
-  TaskDefinitionArn:
-    Type: String
-  PrivateSubnetAId:
-    Type: AWS::EC2::Subnet::Id
-  PrivateSubnetBId:
-    Type: AWS::EC2::Subnet::Id
-  ECSSecurityGroupId:
-    Type: AWS::EC2::SecurityGroup::Id
-  StateMachineRoleArn:
-    Type: String
 
 Resources:
   StateMachine:
     Type: AWS::StepFunctions::StateMachine
     Properties:
       StateMachineType: STANDARD
-      RoleArn: !Ref StateMachineRoleArn
+      RoleArn:
+        Fn::ImportValue: !Sub '${EnvironmentName}-StepFunctionsRoleArn'
       DefinitionString: !Sub
         - |
           {
@@ -104,15 +91,18 @@ Resources:
               }
             }
           }
-        - EC2InstanceId: !Ref EC2InstanceId
-          ECSClusterArn: !Ref ECSClusterArn
-          TaskDefinitionArn: !Ref TaskDefinitionArn
-          PrivateSubnetAId: !Ref PrivateSubnetAId
-          PrivateSubnetBId: !Ref PrivateSubnetBId
-          ECSSecurityGroupId: !Ref ECSSecurityGroupId
-      Tags:
-        - Key: Environment
-          Value: !Ref EnvironmentName
+        - EC2InstanceId:
+            Fn::ImportValue: !Sub '${EnvironmentName}-EC2InstanceId'
+          ECSClusterArn:
+            Fn::ImportValue: !Sub '${EnvironmentName}-ECSClusterArn'
+          TaskDefinitionArn:
+            Fn::ImportValue: !Sub '${EnvironmentName}-TaskDefinitionArn'
+          PrivateSubnetAId:
+            Fn::ImportValue: !Sub '${EnvironmentName}-PrivateSubnetAId'
+          PrivateSubnetBId:
+            Fn::ImportValue: !Sub '${EnvironmentName}-PrivateSubnetBId'
+          ECSSecurityGroupId:
+            Fn::ImportValue: !Sub '${EnvironmentName}-ECSSecurityGroupId'
 
 Outputs:
   StateMachineArn:

@@ -2,9 +2,8 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: Runtime IAM roles for EC2, ECS, and Step Functions.
 
 Parameters:
-  TransactionBucketName:
+  EnvironmentName:
     Type: String
-    Description: Existing S3 bucket containing transaction files.
 
 Resources:
   EC2InstanceRole:
@@ -57,7 +56,11 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:GetObject
-                Resource: !Sub arn:${AWS::Partition}:s3:::${TransactionBucketName}/*
+                Resource:
+                  - !Sub
+                    - arn:${AWS::Partition}:s3:::${BucketName}/*
+                    - BucketName:
+                        Fn::ImportValue: !Sub '${EnvironmentName}-TransactionBucketName'
 
   StepFunctionsRole:
     Type: AWS::IAM::Role
@@ -87,9 +90,17 @@ Resources:
 Outputs:
   EC2InstanceProfileName:
     Value: !Ref EC2InstanceProfile
+    Export:
+      Name: !Sub '${EnvironmentName}-EC2InstanceProfileName'
   ECSTaskExecutionRoleArn:
     Value: !GetAtt ECSTaskExecutionRole.Arn
+    Export:
+      Name: !Sub '${EnvironmentName}-ECSTaskExecutionRoleArn'
   ECSTaskRoleArn:
     Value: !GetAtt ECSTaskRole.Arn
+    Export:
+      Name: !Sub '${EnvironmentName}-ECSTaskRoleArn'
   StepFunctionsRoleArn:
     Value: !GetAtt StepFunctionsRole.Arn
+    Export:
+      Name: !Sub '${EnvironmentName}-StepFunctionsRoleArn'
