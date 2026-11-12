@@ -40,6 +40,14 @@ GitHub repository
 Goal: connect GitHub to AWS CodePipeline without storing AWS credentials in
 GitHub.
 
+The bootstrap template is `cloudformation/bootstrap.yaml`. Deploy it from the
+AWS CloudShell in `ap-south-1` after replacing only the deployment-time
+parameters with values from the AWS console. The template creates the
+CodePipeline service role, the single infrastructure deployment role, and an
+encrypted versioned artifact bucket.
+
+Do not run the pipeline yet: the application stack is added in later tasks.
+
 Screenshots:
 
 - AWS CodeConnections connection in `AVAILABLE` state.

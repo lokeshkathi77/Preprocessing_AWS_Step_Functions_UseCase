@@ -1,0 +1,227 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS-native deployment foundation for the transaction platform.
+
+Parameters:
+  ConnectionArn:
+    Type: String
+    Description: ARN of the AVAILABLE AWS CodeConnections GitHub connection.
+  FullRepositoryId:
+    Type: String
+    Description: GitHub repository in owner/name format.
+  BranchName:
+    Type: String
+    Default: main
+    Description: Source branch used by CodePipeline.
+  ApplicationStackName:
+    Type: String
+    Default: transaction-platform
+    Description: CloudFormation stack deployed by the pipeline.
+  ArtifactBucketName:
+    Type: String
+    Default: ''
+    Description: Optional globally unique artifact bucket name.
+
+Conditions:
+  HasArtifactBucketName: !Not
+    - !Equals
+      - !Ref ArtifactBucketName
+      - ''
+  HasGeneratedArtifactBucket: !Equals
+    - !Ref ArtifactBucketName
+    - ''
+
+Resources:
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    Condition: HasArtifactBucketName
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Ref ArtifactBucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+
+  GeneratedArtifactBucket:
+    Type: AWS::S3::Bucket
+    Condition: HasGeneratedArtifactBucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+
+  PipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: PipelineServicePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                  - s3:ListBucket
+                Resource:
+                  - !If
+                    - HasArtifactBucketName
+                    - !GetAtt ArtifactBucket.Arn
+                    - !GetAtt GeneratedArtifactBucket.Arn
+                  - !If
+                    - HasArtifactBucketName
+                    - !Sub
+                      - '${BucketArn}/*'
+                      - BucketArn: !GetAtt ArtifactBucket.Arn
+                    - !Sub
+                      - '${BucketArn}/*'
+                      - BucketArn: !GetAtt GeneratedArtifactBucket.Arn
+              - Effect: Allow
+                Action:
+                  - codestar-connections:UseConnection
+                  - codeconnections:UseConnection
+                Resource: !Ref ConnectionArn
+              - Effect: Allow
+                Action:
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:DescribeStacks
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:SetStackPolicy
+                  - cloudformation:ValidateTemplate
+                Resource: '*'
+
+  InfrastructureDeploymentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - cloudformation.amazonaws.com
+                - codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InfrastructureDeploymentPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudformation:*
+                  - ec2:*
+                  - ecs:*
+                  - ecr:*
+                  - events:*
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:GetRole
+                  - iam:PassRole
+                  - logs:*
+                  - states:*
+                  - s3:*
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                  - ssm:GetParametersByPath
+                Resource: '*'
+
+  DeploymentPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      ArtifactStore:
+        Location: !If
+          - HasArtifactBucketName
+          - !Ref ArtifactBucket
+          - !Ref GeneratedArtifactBucket
+        Type: S3
+      RoleArn: !GetAtt PipelineServiceRole.Arn
+      RestartExecutionOnUpdate: true
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: GitHubSource
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: '1'
+              Configuration:
+                ConnectionArn: !Ref ConnectionArn
+                FullRepositoryId: !Ref FullRepositoryId
+                BranchName: !Ref BranchName
+                DetectChanges: false
+              OutputArtifacts:
+                - Name: SourceOutput
+              RunOrder: 1
+        - Name: Deploy
+          Actions:
+            - Name: DeployApplicationStack
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_NAMED_IAM
+                ChangeSetName: !Sub '${ApplicationStackName}-change-set'
+                ParameterOverrides: '{}'
+                RoleArn: !GetAtt InfrastructureDeploymentRole.Arn
+                StackName: !Ref ApplicationStackName
+                TemplateConfiguration: SourceOutput::cloudformation/parameters.json
+                TemplatePath: SourceOutput::cloudformation/main.yaml
+              InputArtifacts:
+                - Name: SourceOutput
+              RoleArn: !GetAtt InfrastructureDeploymentRole.Arn
+              RunOrder: 1
+
+Outputs:
+  ArtifactBucketName:
+    Description: S3 bucket used by CodePipeline.
+    Value: !If
+      - HasArtifactBucketName
+      - !Ref ArtifactBucket
+      - !Ref GeneratedArtifactBucket
+  DeploymentPipelineName:
+    Description: CodePipeline name.
+    Value: !Ref DeploymentPipeline
+  InfrastructureDeploymentRoleArn:
+    Description: Single role used by CloudFormation to provision the platform.
+    Value: !GetAtt InfrastructureDeploymentRole.Arn
+  PipelineServiceRoleArn:
+    Description: CodePipeline service role.
+    Value: !GetAtt PipelineServiceRole.Arn

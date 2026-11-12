@@ -51,3 +51,9 @@ resource is created.
 ## Status
 
 Task 1 - repository foundation: complete.
+Task 2 - deployment foundation template: complete.
+
+The bootstrap template is deployed once by an AWS administrator. It creates
+the artifact bucket, CodePipeline, and the infrastructure deployment role.
+After the application stack exists, pipeline executions are started from the
+AWS console or CLI using the configured source connection.
