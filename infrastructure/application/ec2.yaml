@@ -1,0 +1,100 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: EC2 preprocessing instance for the transaction workflow
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: demo
+
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    AllowedValues:
+      - t3.micro
+      - t3.small
+      - t3.medium
+
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+
+  SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+
+  InstanceProfileName:
+    Type: String
+
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+
+Resources:
+  PreprocessingInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestAmiId
+      InstanceType: !Ref InstanceType
+      SubnetId: !Ref SubnetId
+
+      SecurityGroupIds:
+        - !Ref SecurityGroupId
+
+      IamInstanceProfile: !Ref InstanceProfileName
+      Monitoring: false
+
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpTokens: required
+        HttpPutResponseHopLimit: 1
+
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeType: gp3
+            VolumeSize: 10
+            Encrypted: true
+            DeleteOnTermination: true
+
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euo pipefail
+
+          mkdir -p /opt/transaction-preprocessor
+
+          cat > /opt/transaction-preprocessor/status <<'EOF'
+          READY
+          EOF
+
+          cat > /opt/transaction-preprocessor/metadata.json <<EOF
+          {
+            "environment": "${EnvironmentName}",
+            "purpose": "TransactionPreprocessor",
+            "status": "READY"
+          }
+          EOF
+
+          chmod 644 /opt/transaction-preprocessor/status
+          chmod 644 /opt/transaction-preprocessor/metadata.json
+
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-transaction-preprocessor"
+        - Key: Purpose
+          Value: TransactionPreprocessor
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: TransactionWorkflow
+
+Outputs:
+  Ec2InstanceId:
+    Description: EC2 preprocessing instance ID
+    Value: !Ref PreprocessingInstance
+
+  Ec2PrivateIp:
+    Description: EC2 private IP address
+    Value: !GetAtt PreprocessingInstance.PrivateIp
+
+  Ec2AvailabilityZone:
+    Description: EC2 Availability Zone
+    Value: !GetAtt PreprocessingInstance.AvailabilityZone

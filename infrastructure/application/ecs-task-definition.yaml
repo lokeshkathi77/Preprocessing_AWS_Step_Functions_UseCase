@@ -1,0 +1,107 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ECS Fargate task definition for transaction processing
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: demo
+
+  ContainerImageUri:
+    Type: String
+
+  EcsTaskExecutionRoleArn:
+    Type: String
+
+  EcsTaskRoleArn:
+    Type: String
+
+  OutputBucketName:
+    Type: String
+
+  TaskCpu:
+    Type: String
+    Default: "256"
+    AllowedValues:
+      - "256"
+      - "512"
+      - "1024"
+
+  TaskMemory:
+    Type: String
+    Default: "512"
+    AllowedValues:
+      - "512"
+      - "1024"
+      - "2048"
+
+Resources:
+  TransactionLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub "/ecs/${EnvironmentName}/transaction-processor"
+      RetentionInDays: 14
+
+  TransactionTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "${EnvironmentName}-transaction-processor"
+      RequiresCompatibilities:
+        - FARGATE
+
+      NetworkMode: awsvpc
+      Cpu: !Ref TaskCpu
+      Memory: !Ref TaskMemory
+      ExecutionRoleArn: !Ref EcsTaskExecutionRoleArn
+      TaskRoleArn: !Ref EcsTaskRoleArn
+
+      RuntimePlatform:
+        CpuArchitecture: X86_64
+        OperatingSystemFamily: LINUX
+
+      ContainerDefinitions:
+        - Name: transaction-processor
+          Image: !Ref ContainerImageUri
+          Essential: true
+          Cpu: 0
+
+          Environment:
+            - Name: RUN_MODE
+              Value: s3
+            - Name: OUTPUT_BUCKET
+              Value: !Ref OutputBucketName
+            - Name: LOG_LEVEL
+              Value: INFO
+
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref TransactionLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: transaction
+
+          ReadonlyRootFilesystem: true
+
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: TransactionWorkflow
+
+Outputs:
+  TaskDefinitionArn:
+    Description: ECS task-definition ARN
+    Value: !Ref TransactionTaskDefinition
+
+  TaskDefinitionFamily:
+    Description: ECS task-definition family
+    Value: !Sub "${EnvironmentName}-transaction-processor"
+
+  ContainerName:
+    Description: ECS container name
+    Value: transaction-processor
+
+  TransactionLogGroupName:
+    Description: CloudWatch log-group name
+    Value: !Ref TransactionLogGroup
