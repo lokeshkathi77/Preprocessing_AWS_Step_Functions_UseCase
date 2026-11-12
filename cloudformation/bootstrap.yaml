@@ -96,6 +96,7 @@ Resources:
                   - cloudformation:CreateChangeSet
                   - cloudformation:DescribeChangeSet
                   - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
                   - cloudformation:ExecuteChangeSet
                   - cloudformation:UpdateStack
                   - cloudformation:ValidateTemplate
