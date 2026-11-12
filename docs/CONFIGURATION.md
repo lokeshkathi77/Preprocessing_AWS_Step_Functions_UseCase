@@ -45,3 +45,22 @@ Do not embed any of the following in templates, scripts, or documentation:
 5. Pass runtime transaction locations as Step Functions execution input.
 
 Any exception must be documented in the pull request and in this file.
+
+## CloudFormation template boundaries
+
+Each resource area has its own template. `main.yaml` is the root nested-stack
+orchestration template and passes deployment parameters to child templates:
+
+| Template | Responsibility |
+|---|---|
+| `bootstrap.yaml` | One-time CodePipeline, packaging, and deployment foundation |
+| `main.yaml` | Root nested-stack orchestration |
+| `network.yaml` | VPC, subnets, routes, and security groups |
+| `ec2.yaml` | EC2 preprocessing resources |
+| `ecs.yaml` | ECS cluster and task definition |
+| `stepfunctions.yaml` | Step Functions state machine |
+| `buildspec.yml` | AWS CodeBuild packaging of nested templates |
+
+CodeBuild packages the separate child templates to S3 before CloudFormation
+deploys the root template. This is required because nested-stack
+`TemplateURL` values must resolve to S3 objects.

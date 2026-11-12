@@ -1,0 +1,2 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: ECS cluster and task definition resources. Reserved for the ECS implementation task.
