@@ -98,6 +98,10 @@ Resources:
                   - cloudformation:ExecuteChangeSet
                   - cloudformation:ValidateTemplate
                 Resource: '*'
+              - Effect: Allow
+                Action:
+                  - iam:PassRole
+                Resource: !GetAtt InfrastructureDeploymentRole.Arn
 
   InfrastructureDeploymentRole:
     Type: AWS::IAM::Role
