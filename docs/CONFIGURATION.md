@@ -24,3 +24,7 @@ same CloudFormation deployment.
 The pipeline creates an immutable ECR repository, builds `application/` with
 AWS CodeBuild, pushes an image tagged with the source commit SHA, and passes
 that image URI to the ECS stack through a CodePipeline variable.
+
+The worker expects a CSV object with an `amount` column by default. The
+optional `TRANSACTION_AMOUNT_COLUMN` environment variable can select a
+different column without changing the container code.

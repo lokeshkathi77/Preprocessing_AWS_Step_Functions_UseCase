@@ -1,6 +1,11 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Runtime IAM roles for EC2, ECS, and Step Functions.
 
+Parameters:
+  TransactionBucketName:
+    Type: String
+    Description: Existing S3 bucket containing transaction files.
+
 Resources:
   EC2InstanceRole:
     Type: AWS::IAM::Role
@@ -52,7 +57,7 @@ Resources:
               - Effect: Allow
                 Action:
                   - s3:GetObject
-                Resource: '*'
+                Resource: !Sub arn:${AWS::Partition}:s3:::${TransactionBucketName}/*
 
   StepFunctionsRole:
     Type: AWS::IAM::Role

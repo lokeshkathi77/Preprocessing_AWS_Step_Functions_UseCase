@@ -59,6 +59,8 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: iam.yaml
+      Parameters:
+        TransactionBucketName: !Ref TransactionBucketName
 
   Ec2Stack:
     Type: AWS::CloudFormation::Stack

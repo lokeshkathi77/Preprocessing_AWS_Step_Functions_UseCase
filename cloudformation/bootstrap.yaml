@@ -18,6 +18,9 @@ Parameters:
     Type: String
   PrivateSubnetBCidr:
     Type: String
+  TransactionBucketName:
+    Type: String
+    Description: Existing S3 bucket containing transaction files.
 Resources:
   GeneratedArtifactBucket:
     Type: AWS::S3::Bucket
@@ -286,11 +289,12 @@ Resources:
                 StackName: !Ref ApplicationStackName
                 TemplatePath: Packaged::packaged.yaml
                 ParameterOverrides: !Sub
-                  - '{"EnvironmentName":"${EnvironmentName}","VpcCidr":"${VpcCidr}","PrivateSubnetACidr":"${PrivateSubnetACidr}","PrivateSubnetBCidr":"${PrivateSubnetBCidr}","ContainerImage":"#{ImageBuild.IMAGE_URI}"}'
+                  - '{"EnvironmentName":"${EnvironmentName}","VpcCidr":"${VpcCidr}","PrivateSubnetACidr":"${PrivateSubnetACidr}","PrivateSubnetBCidr":"${PrivateSubnetBCidr}","ContainerImage":"#{ImageBuild.IMAGE_URI}","TransactionBucketName":"${TransactionBucketName}"}'
                   - EnvironmentName: !Ref EnvironmentName
                     VpcCidr: !Ref VpcCidr
                     PrivateSubnetACidr: !Ref PrivateSubnetACidr
                     PrivateSubnetBCidr: !Ref PrivateSubnetBCidr
+                    TransactionBucketName: !Ref TransactionBucketName
                 RoleArn: !GetAtt InfrastructureDeploymentRole.Arn
               InputArtifacts:
                 - Name: Packaged
