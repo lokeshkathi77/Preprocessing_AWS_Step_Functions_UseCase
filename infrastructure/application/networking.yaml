@@ -1,0 +1,132 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: VPC and public subnets for the transaction workflow
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: demo
+
+  VpcCidr:
+    Type: String
+    Default: 10.20.0.0/16
+
+  PublicSubnetACidr:
+    Type: String
+    Default: 10.20.1.0/24
+
+  PublicSubnetBCidr:
+    Type: String
+    Default: 10.20.2.0/24
+
+Resources:
+  TransactionVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      InstanceTenancy: default
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-transaction-vpc"
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: TransactionWorkflow
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-transaction-igw"
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref TransactionVpc
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref TransactionVpc
+      CidrBlock: !Ref PublicSubnetACidr
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs ""
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-public-subnet-a"
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref TransactionVpc
+      CidrBlock: !Ref PublicSubnetBCidr
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs ""
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-public-subnet-b"
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref TransactionVpc
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-public-route-table"
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  DefaultInternetRoute:
+    Type: AWS::EC2::Route
+    DependsOn:
+      - InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+Outputs:
+  VpcId:
+    Description: Transaction VPC ID
+    Value: !Ref TransactionVpc
+
+  VpcCidr:
+    Description: Transaction VPC CIDR
+    Value: !GetAtt TransactionVpc.CidrBlock
+
+  PublicSubnetAId:
+    Description: Public subnet A ID
+    Value: !Ref PublicSubnetA
+
+  PublicSubnetBId:
+    Description: Public subnet B ID
+    Value: !Ref PublicSubnetB
+
+  PublicRouteTableId:
+    Description: Public route table ID
+    Value: !Ref PublicRouteTable

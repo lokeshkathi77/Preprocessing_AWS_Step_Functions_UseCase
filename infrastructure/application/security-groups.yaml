@@ -1,0 +1,89 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Security groups for EC2 and ECS transaction-processing resources
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: demo
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+
+  VpcCidr:
+    Type: String
+
+Resources:
+  Ec2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Outbound access for the EC2 preprocessing instance
+      VpcId: !Ref VpcId
+
+      SecurityGroupEgress:
+        - Description: HTTPS access to AWS services
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+        - Description: DNS over UDP to the VPC resolver
+          IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: !Ref VpcCidr
+
+        - Description: DNS over TCP to the VPC resolver
+          IpProtocol: tcp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: !Ref VpcCidr
+
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-ec2-sg"
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: TransactionWorkflow
+
+  EcsSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Outbound access for ECS Fargate transaction tasks
+      VpcId: !Ref VpcId
+
+      SecurityGroupEgress:
+        - Description: HTTPS access to ECR, S3, and CloudWatch Logs
+          IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
+        - Description: DNS over UDP to the VPC resolver
+          IpProtocol: udp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: !Ref VpcCidr
+
+        - Description: DNS over TCP to the VPC resolver
+          IpProtocol: tcp
+          FromPort: 53
+          ToPort: 53
+          CidrIp: !Ref VpcCidr
+
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-ecs-sg"
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: TransactionWorkflow
+
+Outputs:
+  Ec2SecurityGroupId:
+    Description: EC2 preprocessing security-group ID
+    Value: !Ref Ec2SecurityGroup
+
+  EcsSecurityGroupId:
+    Description: ECS Fargate security-group ID
+    Value: !Ref EcsSecurityGroup

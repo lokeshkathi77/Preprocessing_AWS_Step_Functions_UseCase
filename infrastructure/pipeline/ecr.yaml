@@ -1,0 +1,59 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ECR repository for the transaction processor
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: demo
+    AllowedPattern: "^[a-z][a-z0-9-]*$"
+
+Resources:
+  TransactionProcessorRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${EnvironmentName}-transaction-processor"
+      ImageTagMutability: IMMUTABLE
+      EmptyOnDelete: true
+
+      EncryptionConfiguration:
+        EncryptionType: AES256
+
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Retain the latest 20 images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 20
+                },
+                "action": {
+                  "type": "expire"
+                }
+              }
+            ]
+          }
+
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-transaction-processor"
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: TransactionWorkflow
+
+Outputs:
+  EcrRepositoryName:
+    Description: ECR repository name
+    Value: !Ref TransactionProcessorRepository
+
+  EcrRepositoryArn:
+    Description: ECR repository ARN
+    Value: !GetAtt TransactionProcessorRepository.Arn
+
+  EcrRepositoryUri:
+    Description: ECR repository URI
+    Value: !GetAtt TransactionProcessorRepository.RepositoryUri

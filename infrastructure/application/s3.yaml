@@ -1,0 +1,139 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: S3 input and output buckets for transaction processing
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: demo
+
+Resources:
+  TransactionInputBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+            BucketKeyEnabled: true
+
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+
+      LifecycleConfiguration:
+        Rules:
+          - Id: AbortIncompleteMultipartUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-transaction-input"
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: TransactionWorkflow
+
+  TransactionOutputBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      VersioningConfiguration:
+        Status: Enabled
+
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+            BucketKeyEnabled: true
+
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+
+      LifecycleConfiguration:
+        Rules:
+          - Id: AbortIncompleteMultipartUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+
+      Tags:
+        - Key: Name
+          Value: !Sub "${EnvironmentName}-transaction-output"
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: TransactionWorkflow
+
+  InputBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TransactionInputBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyUnencryptedTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt TransactionInputBucket.Arn
+              - !Sub "${TransactionInputBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  OutputBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref TransactionOutputBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyUnencryptedTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource:
+              - !GetAtt TransactionOutputBucket.Arn
+              - !Sub "${TransactionOutputBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+Outputs:
+  InputBucketName:
+    Description: Transaction input bucket name
+    Value: !Ref TransactionInputBucket
+
+  InputBucketArn:
+    Description: Transaction input bucket ARN
+    Value: !GetAtt TransactionInputBucket.Arn
+
+  OutputBucketName:
+    Description: Transaction output bucket name
+    Value: !Ref TransactionOutputBucket
+
+  OutputBucketArn:
+    Description: Transaction output bucket ARN
+    Value: !GetAtt TransactionOutputBucket.Arn
