@@ -1,0 +1,42 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Private EC2 preprocessing instance.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+  SecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+  InstanceProfileName:
+    Type: String
+  InstanceType:
+    Type: String
+  EbsVolumeSize:
+    Type: Number
+
+Resources:
+  PreprocessingInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}'
+      InstanceType: !Ref InstanceType
+      IamInstanceProfile: !Ref InstanceProfileName
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds:
+        - !Ref SecurityGroupId
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            Encrypted: true
+            VolumeSize: !Ref EbsVolumeSize
+            VolumeType: gp3
+      Tags:
+        - Key: Name
+          Value: !Sub '${EnvironmentName}-preprocessor'
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+Outputs:
+  InstanceId:
+    Value: !Ref PreprocessingInstance

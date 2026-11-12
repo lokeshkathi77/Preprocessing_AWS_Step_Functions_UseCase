@@ -1,0 +1,237 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: One-time AWS CodePipeline foundation for GitHub-driven CloudFormation.
+
+Parameters:
+  ConnectionArn:
+    Type: String
+  FullRepositoryId:
+    Type: String
+  BranchName:
+    Type: String
+  ApplicationStackName:
+    Type: String
+  EnvironmentName:
+    Type: String
+  VpcCidr:
+    Type: String
+  PrivateSubnetACidr:
+    Type: String
+  PrivateSubnetBCidr:
+    Type: String
+  ContainerImage:
+    Type: String
+  ArtifactBucketName:
+    Type: String
+    Default: ''
+
+Conditions:
+  UseNamedArtifactBucket: !Not [!Equals [!Ref ArtifactBucketName, '']]
+
+Resources:
+  GeneratedArtifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+
+  PipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: PipelineServicePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt GeneratedArtifactBucket.Arn
+                  - !Sub '${GeneratedArtifactBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - codeconnections:UseConnection
+                  - codestar-connections:UseConnection
+                Resource: !Ref ConnectionArn
+              - Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                Resource: !GetAtt PackagingProject.Arn
+              - Effect: Allow
+                Action:
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:DescribeStacks
+                  - cloudformation:ExecuteChangeSet
+                Resource: '*'
+
+  InfrastructureDeploymentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - codepipeline.amazonaws.com
+                - cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InfrastructureProvisioning
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudformation:*
+                  - ec2:*
+                  - ecs:*
+                  - ecr:*
+                  - iam:*
+                  - logs:*
+                  - states:*
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:ListBucket
+                Resource: '*'
+
+  PackagingServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: Packaging
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt GeneratedArtifactBucket.Arn
+                  - !Sub '${GeneratedArtifactBucket.Arn}/*'
+
+  PackagingProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      ServiceRole: !GetAtt PackagingServiceRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Source:
+        Type: CODEPIPELINE
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+        Type: LINUX_CONTAINER
+        EnvironmentVariables:
+          - Name: ARTIFACT_BUCKET
+            Value: !Ref GeneratedArtifactBucket
+
+  DeploymentPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      RoleArn: !GetAtt PipelineServiceRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref GeneratedArtifactBucket
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: GitHub
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: '1'
+              Configuration:
+                ConnectionArn: !Ref ConnectionArn
+                FullRepositoryId: !Ref FullRepositoryId
+                BranchName: !Ref BranchName
+                DetectChanges: true
+              OutputArtifacts:
+                - Name: Source
+        - Name: Package
+          Actions:
+            - Name: PackageTemplates
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref PackagingProject
+              InputArtifacts:
+                - Name: Source
+              OutputArtifacts:
+                - Name: Packaged
+        - Name: Deploy
+          Actions:
+            - Name: CloudFormation
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_NAMED_IAM
+                StackName: !Ref ApplicationStackName
+                TemplatePath: Packaged::packaged.yaml
+                ParameterOverrides: !Sub
+                  - '{"EnvironmentName":"${EnvironmentName}","VpcCidr":"${VpcCidr}","PrivateSubnetACidr":"${PrivateSubnetACidr}","PrivateSubnetBCidr":"${PrivateSubnetBCidr}","ContainerImage":"${ContainerImage}"}'
+                  - EnvironmentName: !Ref EnvironmentName
+                    VpcCidr: !Ref VpcCidr
+                    PrivateSubnetACidr: !Ref PrivateSubnetACidr
+                    PrivateSubnetBCidr: !Ref PrivateSubnetBCidr
+                    ContainerImage: !Ref ContainerImage
+                RoleArn: !GetAtt InfrastructureDeploymentRole.Arn
+              InputArtifacts:
+                - Name: Packaged
+
+Outputs:
+  PipelineName:
+    Value: !Ref DeploymentPipeline
+  InfrastructureDeploymentRoleArn:
+    Value: !GetAtt InfrastructureDeploymentRole.Arn
+  ArtifactBucketName:
+    Value: !Ref GeneratedArtifactBucket

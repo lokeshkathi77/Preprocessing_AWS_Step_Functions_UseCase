@@ -1,0 +1,23 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: ECR repository for the transaction worker.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+
+Resources:
+  TransactionRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      ImageTagMutability: IMMUTABLE
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+Outputs:
+  RepositoryUri:
+    Value: !GetAtt TransactionRepository.RepositoryUri

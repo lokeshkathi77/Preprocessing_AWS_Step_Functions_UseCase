@@ -1,7 +1,53 @@
-# Preprocessing AWS Step Functions Use Case
+# AWS Transaction Processing Use Case
 
-Clean starting point for the AWS-native transaction processing demonstration.
+AWS-native demonstration for daily transaction-file processing:
 
-All implementation values must be dynamic and supplied through deployment
-parameters, AWS-managed configuration, or CloudFormation references. No
-environment-specific identifiers or credentials belong in source control.
+```text
+GitHub
+  -> AWS CodeConnections
+  -> AWS CodePipeline
+  -> AWS CodeBuild
+  -> AWS CloudFormation
+  -> VPC, EC2, ECS, Step Functions
+```
+
+The workflow validates an EC2 preprocessing instance and then runs a specific
+ECS task definition. Infrastructure is split into separate CloudFormation
+templates and deployed from GitHub.
+
+## Implementation order
+
+1. Deploy the one-time pipeline bootstrap.
+2. Push the application stack through GitHub.
+3. Validate the network and IAM resources.
+4. Validate the EC2 preprocessing instance.
+5. Validate the ECS task definition and image.
+6. Execute and audit the Step Functions workflow.
+
+## Dynamic configuration
+
+No AWS account IDs, regions, subnet IDs, security-group IDs, AMI IDs, bucket
+names, or credentials are embedded in source. Deployment values are supplied
+through CloudFormation parameters, CodePipeline configuration, AWS Systems
+Manager public parameters, and CloudFormation references/outputs.
+
+## Templates
+
+| File | Responsibility |
+|---|---|
+| `cloudformation/bootstrap.yaml` | One-time CodePipeline foundation |
+| `cloudformation/main.yaml` | Root nested application stack |
+| `cloudformation/network.yaml` | VPC, subnets, routes, security groups |
+| `cloudformation/iam.yaml` | Runtime roles and EC2 instance profile |
+| `cloudformation/ec2.yaml` | Preprocessing EC2 instance |
+| `cloudformation/ecr.yaml` | ECR repository |
+| `cloudformation/ecs.yaml` | ECS cluster and task definition |
+| `cloudformation/stepfunctions.yaml` | Orchestration state machine |
+| `stepfunctions/transaction-workflow.asl.json` | State machine definition |
+
+## IAM clarification
+
+The bootstrap creates one `InfrastructureDeploymentRole`. CodePipeline passes
+that role to CloudFormation, and CloudFormation uses it to create both the EC2
+instance and ECS task definition. Service runtime roles remain separate because
+EC2, ECS, and Step Functions require different trust policies.

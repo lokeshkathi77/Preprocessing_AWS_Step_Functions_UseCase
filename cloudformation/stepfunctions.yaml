@@ -1,0 +1,119 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Step Functions workflow for EC2 validation and ECS processing.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+  EC2InstanceId:
+    Type: String
+  ECSClusterArn:
+    Type: String
+  TaskDefinitionArn:
+    Type: String
+  PrivateSubnetAId:
+    Type: AWS::EC2::Subnet::Id
+  PrivateSubnetBId:
+    Type: AWS::EC2::Subnet::Id
+  ECSSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+  StateMachineRoleArn:
+    Type: String
+
+Resources:
+  StateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineType: STANDARD
+      RoleArn: !Ref StateMachineRoleArn
+      DefinitionString: !Sub
+        - |
+          {
+            "Comment": "Validate EC2, then process a transaction with ECS",
+            "StartAt": "CheckEC2",
+            "States": {
+              "CheckEC2": {
+                "Type": "Task",
+                "Resource": "arn:${AWS::Partition}:states:::aws-sdk:ec2:describeInstances",
+                "Parameters": {
+                  "InstanceIds": ["${EC2InstanceId}"]
+                },
+                "ResultPath": "$.ec2Description",
+                "Next": "EC2Running?"
+              },
+              "EC2Running?": {
+                "Type": "Choice",
+                "Choices": [
+                  {
+                    "Variable": "$.ec2Description.Reservations[0].Instances[0].State.Name",
+                    "StringEquals": "running",
+                    "Next": "RunECSTask"
+                  }
+                ],
+                "Default": "StartEC2"
+              },
+              "StartEC2": {
+                "Type": "Task",
+                "Resource": "arn:${AWS::Partition}:states:::aws-sdk:ec2:startInstances",
+                "Parameters": {
+                  "InstanceIds": ["${EC2InstanceId}"]
+                },
+                "Next": "WaitForEC2"
+              },
+              "WaitForEC2": {
+                "Type": "Wait",
+                "Seconds": 20,
+                "Next": "CheckEC2"
+              },
+              "RunECSTask": {
+                "Type": "Task",
+                "Resource": "arn:${AWS::Partition}:states:::ecs:runTask.sync",
+                "Parameters": {
+                  "Cluster": "${ECSClusterArn}",
+                  "TaskDefinition": "${TaskDefinitionArn}",
+                  "LaunchType": "FARGATE",
+                  "NetworkConfiguration": {
+                    "AwsvpcConfiguration": {
+                      "Subnets": ["${PrivateSubnetAId}", "${PrivateSubnetBId}"],
+                      "SecurityGroups": ["${ECSSecurityGroupId}"],
+                      "AssignPublicIp": "DISABLED"
+                    }
+                  },
+                  "Overrides": {
+                    "ContainerOverrides": [
+                      {
+                        "Name": "transaction-worker",
+                        "Environment": [
+                          {
+                            "Name": "TRANSACTION_FILE",
+                            "Value.$": "$.transactionFile"
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                "Retry": [
+                  {
+                    "ErrorEquals": ["States.ALL"],
+                    "IntervalSeconds": 10,
+                    "MaxAttempts": 2,
+                    "BackoffRate": 2
+                  }
+                ],
+                "End": true
+              }
+            }
+          }
+        - EC2InstanceId: !Ref EC2InstanceId
+          ECSClusterArn: !Ref ECSClusterArn
+          TaskDefinitionArn: !Ref TaskDefinitionArn
+          PrivateSubnetAId: !Ref PrivateSubnetAId
+          PrivateSubnetBId: !Ref PrivateSubnetBId
+          ECSSecurityGroupId: !Ref ECSSecurityGroupId
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+Outputs:
+  StateMachineArn:
+    Value: !Ref StateMachine

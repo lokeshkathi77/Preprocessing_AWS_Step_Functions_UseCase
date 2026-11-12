@@ -1,0 +1,133 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Root nested stack for the transaction processing use case.
+
+Parameters:
+  EnvironmentName:
+    Type: String
+  VpcCidr:
+    Type: String
+  PrivateSubnetACidr:
+    Type: String
+  PrivateSubnetBCidr:
+    Type: String
+  ContainerImage:
+    Type: String
+    Description: ECS image URI supplied by deployment configuration.
+  TransactionBucketName:
+    Type: String
+    Description: Existing S3 bucket containing transaction files.
+  AvailabilityZoneA:
+    Type: String
+    Default: ''
+  AvailabilityZoneB:
+    Type: String
+    Default: ''
+  InstanceType:
+    Type: String
+    Default: t3.micro
+  EbsVolumeSize:
+    Type: Number
+    Default: 8
+  TaskCpu:
+    Type: String
+    Default: '256'
+  TaskMemory:
+    Type: String
+    Default: '512'
+  LogRetentionInDays:
+    Type: Number
+    Default: 14
+
+Conditions:
+  HasAvailabilityZoneA: !Not [!Equals [!Ref AvailabilityZoneA, '']]
+  HasAvailabilityZoneB: !Not [!Equals [!Ref AvailabilityZoneB, '']]
+
+Resources:
+  NetworkStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: network.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        VpcCidr: !Ref VpcCidr
+        PrivateSubnetACidr: !Ref PrivateSubnetACidr
+        PrivateSubnetBCidr: !Ref PrivateSubnetBCidr
+        AvailabilityZoneA: !Ref AvailabilityZoneA
+        AvailabilityZoneB: !Ref AvailabilityZoneB
+
+  IamStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: iam.yaml
+
+  Ec2Stack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - NetworkStack
+      - IamStack
+    Properties:
+      TemplateURL: ec2.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        SubnetId: !GetAtt NetworkStack.Outputs.PrivateSubnetAId
+        SecurityGroupId: !GetAtt NetworkStack.Outputs.EC2SecurityGroupId
+        InstanceProfileName: !GetAtt IamStack.Outputs.EC2InstanceProfileName
+        InstanceType: !Ref InstanceType
+        EbsVolumeSize: !Ref EbsVolumeSize
+
+  EcrStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: ecr.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+
+  EcsStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - NetworkStack
+      - IamStack
+    Properties:
+      TemplateURL: ecs.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ContainerImage: !Ref ContainerImage
+        VpcId: !GetAtt NetworkStack.Outputs.VpcId
+        PrivateSubnetAId: !GetAtt NetworkStack.Outputs.PrivateSubnetAId
+        PrivateSubnetBId: !GetAtt NetworkStack.Outputs.PrivateSubnetBId
+        SecurityGroupId: !GetAtt NetworkStack.Outputs.ECSSecurityGroupId
+        TaskExecutionRoleArn: !GetAtt IamStack.Outputs.ECSTaskExecutionRoleArn
+        TaskRoleArn: !GetAtt IamStack.Outputs.ECSTaskRoleArn
+        TaskCpu: !Ref TaskCpu
+        TaskMemory: !Ref TaskMemory
+        LogRetentionInDays: !Ref LogRetentionInDays
+
+  StepFunctionsStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - Ec2Stack
+      - EcsStack
+      - IamStack
+    Properties:
+      TemplateURL: stepfunctions.yaml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        EC2InstanceId: !GetAtt Ec2Stack.Outputs.InstanceId
+        ECSClusterArn: !GetAtt EcsStack.Outputs.ClusterArn
+        TaskDefinitionArn: !GetAtt EcsStack.Outputs.TaskDefinitionArn
+        PrivateSubnetAId: !GetAtt NetworkStack.Outputs.PrivateSubnetAId
+        PrivateSubnetBId: !GetAtt NetworkStack.Outputs.PrivateSubnetBId
+        ECSSecurityGroupId: !GetAtt NetworkStack.Outputs.ECSSecurityGroupId
+        StateMachineRoleArn: !GetAtt IamStack.Outputs.StepFunctionsRoleArn
+
+Outputs:
+  VpcId:
+    Value: !GetAtt NetworkStack.Outputs.VpcId
+  EC2InstanceId:
+    Value: !GetAtt Ec2Stack.Outputs.InstanceId
+  ECSClusterArn:
+    Value: !GetAtt EcsStack.Outputs.ClusterArn
+  TaskDefinitionArn:
+    Value: !GetAtt EcsStack.Outputs.TaskDefinitionArn
+  StateMachineArn:
+    Value: !GetAtt StepFunctionsStack.Outputs.StateMachineArn
