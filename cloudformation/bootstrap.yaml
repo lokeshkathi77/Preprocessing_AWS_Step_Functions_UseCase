@@ -18,15 +18,6 @@ Parameters:
     Type: String
   PrivateSubnetBCidr:
     Type: String
-  ContainerImage:
-    Type: String
-  ArtifactBucketName:
-    Type: String
-    Default: ''
-
-Conditions:
-  UseNamedArtifactBucket: !Not [!Equals [!Ref ArtifactBucketName, '']]
-
 Resources:
   GeneratedArtifactBucket:
     Type: AWS::S3::Bucket
@@ -44,6 +35,15 @@ Resources:
         RestrictPublicBuckets: true
       VersioningConfiguration:
         Status: Enabled
+
+  TransactionRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: IMMUTABLE
+      EncryptionConfiguration:
+        EncryptionType: AES256
 
   PipelineServiceRole:
     Type: AWS::IAM::Role
@@ -80,7 +80,9 @@ Resources:
                 Action:
                   - codebuild:StartBuild
                   - codebuild:BatchGetBuilds
-                Resource: !GetAtt PackagingProject.Arn
+                Resource:
+                  - !GetAtt PackagingProject.Arn
+                  - !GetAtt ImageBuildProject.Arn
               - Effect: Allow
                 Action:
                   - cloudformation:CreateChangeSet
@@ -167,6 +169,58 @@ Resources:
           - Name: ARTIFACT_BUCKET
             Value: !Ref GeneratedArtifactBucket
 
+  ImageBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ImageBuild
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:CompleteLayerUpload
+                  - ecr:InitiateLayerUpload
+                  - ecr:PutImage
+                  - ecr:UploadLayerPart
+                Resource: !GetAtt TransactionRepository.Arn
+
+  ImageBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      ServiceRole: !GetAtt ImageBuildServiceRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspec-image.yml
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+        PrivilegedMode: true
+        Type: LINUX_CONTAINER
+        EnvironmentVariables:
+          - Name: ECR_REPOSITORY_URI
+            Value: !GetAtt TransactionRepository.RepositoryUri
+
   DeploymentPipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
@@ -204,6 +258,20 @@ Resources:
                 - Name: Source
               OutputArtifacts:
                 - Name: Packaged
+        - Name: BuildImage
+          Actions:
+            - Name: BuildAndPushImage
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref ImageBuildProject
+              InputArtifacts:
+                - Name: Source
+              Namespace: ImageBuild
+              RunOrder: 1
         - Name: Deploy
           Actions:
             - Name: CloudFormation
@@ -218,12 +286,11 @@ Resources:
                 StackName: !Ref ApplicationStackName
                 TemplatePath: Packaged::packaged.yaml
                 ParameterOverrides: !Sub
-                  - '{"EnvironmentName":"${EnvironmentName}","VpcCidr":"${VpcCidr}","PrivateSubnetACidr":"${PrivateSubnetACidr}","PrivateSubnetBCidr":"${PrivateSubnetBCidr}","ContainerImage":"${ContainerImage}"}'
+                  - '{"EnvironmentName":"${EnvironmentName}","VpcCidr":"${VpcCidr}","PrivateSubnetACidr":"${PrivateSubnetACidr}","PrivateSubnetBCidr":"${PrivateSubnetBCidr}","ContainerImage":"#{ImageBuild.IMAGE_URI}"}'
                   - EnvironmentName: !Ref EnvironmentName
                     VpcCidr: !Ref VpcCidr
                     PrivateSubnetACidr: !Ref PrivateSubnetACidr
                     PrivateSubnetBCidr: !Ref PrivateSubnetBCidr
-                    ContainerImage: !Ref ContainerImage
                 RoleArn: !GetAtt InfrastructureDeploymentRole.Arn
               InputArtifacts:
                 - Name: Packaged
@@ -235,3 +302,5 @@ Outputs:
     Value: !GetAtt InfrastructureDeploymentRole.Arn
   ArtifactBucketName:
     Value: !Ref GeneratedArtifactBucket
+  TransactionRepositoryUri:
+    Value: !GetAtt TransactionRepository.RepositoryUri

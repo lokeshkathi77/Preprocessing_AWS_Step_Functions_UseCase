@@ -7,6 +7,7 @@ GitHub
   -> AWS CodeConnections
   -> AWS CodePipeline
   -> AWS CodeBuild
+  -> Amazon ECR
   -> AWS CloudFormation
   -> VPC, EC2, ECS, Step Functions
 ```
@@ -40,7 +41,7 @@ Manager public parameters, and CloudFormation references/outputs.
 | `cloudformation/network.yaml` | VPC, subnets, routes, security groups |
 | `cloudformation/iam.yaml` | Runtime roles and EC2 instance profile |
 | `cloudformation/ec2.yaml` | Preprocessing EC2 instance |
-| `cloudformation/ecr.yaml` | ECR repository |
+| `cloudformation/ecr.yaml` | Optional standalone ECR template |
 | `cloudformation/ecs.yaml` | ECS cluster and task definition |
 | `cloudformation/stepfunctions.yaml` | Orchestration state machine |
 | `stepfunctions/transaction-workflow.asl.json` | State machine definition |
@@ -51,3 +52,7 @@ The bootstrap creates one `InfrastructureDeploymentRole`. CodePipeline passes
 that role to CloudFormation, and CloudFormation uses it to create both the EC2
 instance and ECS task definition. Service runtime roles remain separate because
 EC2, ECS, and Step Functions require different trust policies.
+
+The bootstrap pipeline creates the ECR repository, builds the worker image from
+`application/`, tags it with the GitHub commit SHA, and passes that image URI
+to the ECS stack dynamically.

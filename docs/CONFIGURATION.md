@@ -20,3 +20,7 @@ Availability zones default to the first two AZs returned by CloudFormation.
 The deployment role is the only infrastructure provisioning role required by
 the use case. Runtime roles are separate service roles and are created by the
 same CloudFormation deployment.
+
+The pipeline creates an immutable ECR repository, builds `application/` with
+AWS CodeBuild, pushes an image tagged with the source commit SHA, and passes
+that image URI to the ECS stack through a CodePipeline variable.

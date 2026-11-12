@@ -1,0 +1,15 @@
+version: 0.2
+
+env:
+  exported-variables:
+    - IMAGE_URI
+
+phases:
+  pre_build:
+    commands:
+      - export IMAGE_URI="${ECR_REPOSITORY_URI}:${CODEBUILD_RESOLVED_SOURCE_VERSION}"
+      - aws ecr get-login-password | docker login --username AWS --password-stdin "$ECR_REPOSITORY_URI"
+  build:
+    commands:
+      - docker build --tag "$IMAGE_URI" application
+      - docker push "$IMAGE_URI"

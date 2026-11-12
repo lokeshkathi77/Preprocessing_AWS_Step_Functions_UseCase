@@ -28,6 +28,7 @@ Capture:
 - EC2 running in a private subnet with no public IPv4
 - Systems Manager managed-node status
 - ECS task definition revision
+- ECR image tagged with the GitHub source commit SHA
 - ECS task network configuration with public IP disabled
 - CloudWatch log group and task log stream
 

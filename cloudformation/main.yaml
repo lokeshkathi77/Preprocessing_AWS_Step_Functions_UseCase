@@ -75,13 +75,6 @@ Resources:
         InstanceType: !Ref InstanceType
         EbsVolumeSize: !Ref EbsVolumeSize
 
-  EcrStack:
-    Type: AWS::CloudFormation::Stack
-    Properties:
-      TemplateURL: ecr.yaml
-      Parameters:
-        EnvironmentName: !Ref EnvironmentName
-
   EcsStack:
     Type: AWS::CloudFormation::Stack
     DependsOn:
