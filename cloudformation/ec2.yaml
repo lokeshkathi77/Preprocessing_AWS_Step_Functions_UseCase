@@ -1,2 +1,0 @@
-AWSTemplateFormatVersion: '2010-09-09'
-Description: EC2 preprocessing resources. Reserved for the EC2 implementation task.
