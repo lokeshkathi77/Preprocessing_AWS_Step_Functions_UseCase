@@ -11,3 +11,5 @@ htmlcov/
 .DS_Store
 .idea/
 .vscode/
+packaged-application.yaml
+transaction-summary-from-s3.json
