@@ -1,0 +1,11 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+  build:
+    commands:
+      - python -m py_compile application/processor.py
+      - python -m pip install --quiet pytest
+      - pytest -q

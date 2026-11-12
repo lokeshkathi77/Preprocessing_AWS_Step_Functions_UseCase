@@ -13,6 +13,22 @@ Parameters:
     Type: String
     Default: t3.micro
 
+  EbsVolumeSize:
+    Type: Number
+    Default: 10
+
+  LogRetentionInDays:
+    Type: Number
+    Default: 14
+
+  TaskCpu:
+    Type: String
+    Default: "256"
+
+  TaskMemory:
+    Type: String
+    Default: "512"
+
   VpcCidr:
     Type: String
     Default: 10.20.0.0/16
@@ -77,6 +93,7 @@ Resources:
       Parameters:
         EnvironmentName: !Ref EnvironmentName
         InstanceType: !Ref Ec2InstanceType
+        EbsVolumeSize: !Ref EbsVolumeSize
         SubnetId: !GetAtt NetworkingStack.Outputs.PublicSubnetAId
         SecurityGroupId: !GetAtt SecurityGroupsStack.Outputs.Ec2SecurityGroupId
         InstanceProfileName: !GetAtt IamStack.Outputs.Ec2InstanceProfileName
@@ -101,8 +118,9 @@ Resources:
         EcsTaskExecutionRoleArn: !GetAtt IamStack.Outputs.EcsTaskExecutionRoleArn
         EcsTaskRoleArn: !GetAtt IamStack.Outputs.EcsTaskRoleArn
         OutputBucketName: !GetAtt StorageStack.Outputs.OutputBucketName
-        TaskCpu: "256"
-        TaskMemory: "512"
+        TaskCpu: !Ref TaskCpu
+        TaskMemory: !Ref TaskMemory
+        LogRetentionInDays: !Ref LogRetentionInDays
 
   StepFunctionsStack:
     Type: AWS::CloudFormation::Stack
@@ -124,6 +142,7 @@ Resources:
         EcsSecurityGroupId: !GetAtt SecurityGroupsStack.Outputs.EcsSecurityGroupId
         OutputBucketName: !GetAtt StorageStack.Outputs.OutputBucketName
         ContainerName: !GetAtt EcsTaskDefinitionStack.Outputs.ContainerName
+        LogRetentionInDays: !Ref LogRetentionInDays
 
 Outputs:
   VpcId:

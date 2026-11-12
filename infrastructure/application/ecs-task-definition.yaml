@@ -34,6 +34,10 @@ Parameters:
       - "1024"
       - "2048"
 
+  LogRetentionInDays:
+    Type: Number
+    Default: 14
+
 Resources:
   TransactionLogGroup:
     Type: AWS::Logs::LogGroup
@@ -41,7 +45,7 @@ Resources:
     UpdateReplacePolicy: Delete
     Properties:
       LogGroupName: !Sub "/ecs/${EnvironmentName}/transaction-processor"
-      RetentionInDays: 14
+      RetentionInDays: !Ref LogRetentionInDays
 
   TransactionTaskDefinition:
     Type: AWS::ECS::TaskDefinition

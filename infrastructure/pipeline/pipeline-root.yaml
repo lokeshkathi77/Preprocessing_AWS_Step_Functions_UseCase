@@ -1,0 +1,313 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: GitHub-driven AWS-native deployment pipeline for the transaction workflow
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: demo
+  ConnectionArn:
+    Type: String
+    Description: Existing AWS CodeConnections ARN authorized for the GitHub repository
+  FullRepositoryId:
+    Type: String
+    Description: GitHub repository in owner/name form
+  BranchName:
+    Type: String
+    Default: main
+  ContainerImageUri:
+    Type: String
+    Description: Existing transaction processor image URI
+  ApplicationStackName:
+    Type: String
+    Default: transaction-application
+  VpcCidr:
+    Type: String
+    Default: 10.20.0.0/16
+  PublicSubnetACidr:
+    Type: String
+    Default: 10.20.1.0/24
+  PublicSubnetBCidr:
+    Type: String
+    Default: 10.20.2.0/24
+  Ec2InstanceType:
+    Type: String
+    Default: t3.micro
+  TaskCpu:
+    Type: String
+    Default: "256"
+  TaskMemory:
+    Type: String
+    Default: "512"
+  EbsVolumeSize:
+    Type: Number
+    Default: 10
+  LogRetentionInDays:
+    Type: Number
+    Default: 14
+
+Resources:
+  ArtifactBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+
+  PipelineServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: PipelineOperations
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketVersioning
+                  - s3:PutObject
+                  - s3:PutObjectAcl
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt ArtifactBucket.Arn
+                  - !Sub "${ArtifactBucket.Arn}/*"
+              - Effect: Allow
+                Action:
+                  - codeconnections:UseConnection
+                  - codestar-connections:UseConnection
+                Resource: !Ref ConnectionArn
+              - Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+                Resource:
+                  - !GetAtt ValidationProject.Arn
+                  - !GetAtt PackagingProject.Arn
+              - Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:UpdateStack
+                  - cloudformation:ValidateTemplate
+                Resource: "*"
+              - Effect: Allow
+                Action: iam:PassRole
+                Resource: !GetAtt InfrastructureDeploymentRole.Arn
+
+  InfrastructureDeploymentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - cloudformation.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: TransactionInfrastructureProvisioning
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudformation:*
+                  - ec2:*
+                  - ecs:*
+                  - events:*
+                  - iam:*
+                  - logs:*
+                  - s3:*
+                  - states:*
+                  - xray:*
+                Resource: "*"
+
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ValidateAndPackage
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                  - s3:GetBucketLocation
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt ArtifactBucket.Arn
+                  - !Sub "${ArtifactBucket.Arn}/*"
+
+  ValidationProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub "${EnvironmentName}-transaction-validation"
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspecs/validate.yml
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+        EnvironmentVariables:
+          - Name: AWS_REGION
+            Value: !Ref AWS::Region
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: TransactionWorkflow
+
+  PackagingProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub "${EnvironmentName}-transaction-packaging"
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Artifacts:
+        Type: CODEPIPELINE
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspecs/build-package.yml
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+        EnvironmentVariables:
+          - Name: ARTIFACT_BUCKET
+            Value: !Ref ArtifactBucket
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Project
+          Value: TransactionWorkflow
+
+  DeploymentPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: !Sub "${EnvironmentName}-transaction-pipeline"
+      RoleArn: !GetAtt PipelineServiceRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref ArtifactBucket
+      RestartExecutionOnUpdate: true
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: GitHub
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: CodeStarSourceConnection
+                Version: "1"
+              Configuration:
+                ConnectionArn: !Ref ConnectionArn
+                FullRepositoryId: !Ref FullRepositoryId
+                BranchName: !Ref BranchName
+                DetectChanges: true
+              OutputArtifacts:
+                - Name: Source
+        - Name: Validate
+          Actions:
+            - Name: Tests
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: "1"
+              Configuration:
+                ProjectName: !Ref ValidationProject
+              InputArtifacts:
+                - Name: Source
+        - Name: Package
+          Actions:
+            - Name: CloudFormationPackage
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: "1"
+              Configuration:
+                ProjectName: !Ref PackagingProject
+              InputArtifacts:
+                - Name: Source
+              OutputArtifacts:
+                - Name: Packaged
+        - Name: Deploy
+          Actions:
+            - Name: Application
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: "1"
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_NAMED_IAM
+                StackName: !Ref ApplicationStackName
+                TemplatePath: Packaged::packaged-application.yaml
+                RoleArn: !GetAtt InfrastructureDeploymentRole.Arn
+                ParameterOverrides: !Sub
+                  - >-
+                    {"EnvironmentName":"${EnvironmentName}","ContainerImageUri":"${ContainerImageUri}","Ec2InstanceType":"${Ec2InstanceType}","EbsVolumeSize":"${EbsVolumeSize}","LogRetentionInDays":"${LogRetentionInDays}","VpcCidr":"${VpcCidr}","PublicSubnetACidr":"${PublicSubnetACidr}","PublicSubnetBCidr":"${PublicSubnetBCidr}","TaskCpu":"${TaskCpu}","TaskMemory":"${TaskMemory}"}
+                  - EnvironmentName: !Ref EnvironmentName
+                    ContainerImageUri: !Ref ContainerImageUri
+                    Ec2InstanceType: !Ref Ec2InstanceType
+                    EbsVolumeSize: !Ref EbsVolumeSize
+                    LogRetentionInDays: !Ref LogRetentionInDays
+                    VpcCidr: !Ref VpcCidr
+                    PublicSubnetACidr: !Ref PublicSubnetACidr
+                    PublicSubnetBCidr: !Ref PublicSubnetBCidr
+                    TaskCpu: !Ref TaskCpu
+                    TaskMemory: !Ref TaskMemory
+              InputArtifacts:
+                - Name: Packaged
+
+Outputs:
+  PipelineName:
+    Value: !Ref DeploymentPipeline
+  ArtifactBucketName:
+    Value: !Ref ArtifactBucket
+  InfrastructureDeploymentRoleArn:
+    Value: !GetAtt InfrastructureDeploymentRole.Arn

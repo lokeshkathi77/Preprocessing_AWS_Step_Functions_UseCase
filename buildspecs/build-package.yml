@@ -1,0 +1,14 @@
+version: 0.2
+
+phases:
+  build:
+    commands:
+      - >-
+        aws cloudformation package
+        --template-file infrastructure/application/application-root.yaml
+        --s3-bucket "$ARTIFACT_BUCKET"
+        --output-template-file packaged-application.yaml
+
+artifacts:
+  files:
+    - packaged-application.yaml

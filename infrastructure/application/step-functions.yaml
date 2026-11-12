@@ -34,6 +34,10 @@ Parameters:
     Type: String
     Default: transaction-processor
 
+  LogRetentionInDays:
+    Type: Number
+    Default: 14
+
 Resources:
   StateMachineLogGroup:
     Type: AWS::Logs::LogGroup
@@ -41,7 +45,7 @@ Resources:
     UpdateReplacePolicy: Delete
     Properties:
       LogGroupName: !Sub "/aws/vendedlogs/states/${EnvironmentName}-transaction-workflow"
-      RetentionInDays: 14
+      RetentionInDays: !Ref LogRetentionInDays
 
   TransactionStateMachine:
     Type: AWS::StepFunctions::StateMachine
