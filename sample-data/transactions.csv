@@ -1,0 +1,5 @@
+transaction_id,amount,currency
+TXN001,250.00,INR
+TXN002,500.50,INR
+TXN003,-25.00,INR
+TXN004,100.00,INR
