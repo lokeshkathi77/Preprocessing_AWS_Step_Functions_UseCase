@@ -280,6 +280,26 @@ Resources:
                 ParameterOverrides: !Sub '{"EnvironmentName":"${EnvironmentName}"}'
               InputArtifacts:
                 - Name: Source
+        - Name: StepFunctions
+          Actions:
+            - Name: DeployStepFunctions
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: "1"
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_NAMED_IAM
+                StackName: !Sub "${ApplicationStackName}-StepFunctions"
+                TemplatePath: Source::infrastructure/application/step-functions.yaml
+                RoleArn: !GetAtt InfrastructureDeploymentRole.Arn
+                ParameterOverrides: !Sub
+                  - '{"EnvironmentName":"${EnvironmentName}","LogRetentionInDays":"${LogRetentionInDays}"}'
+                  - EnvironmentName: !Ref EnvironmentName
+                    LogRetentionInDays: !Ref LogRetentionInDays
+              InputArtifacts:
+                - Name: Source
         - Name: ECSTask
           Actions:
             - Name: DeployECSTask
@@ -300,26 +320,6 @@ Resources:
                     ContainerImageUri: !Ref ContainerImageUri
                     TaskCpu: !Ref TaskCpu
                     TaskMemory: !Ref TaskMemory
-                    LogRetentionInDays: !Ref LogRetentionInDays
-              InputArtifacts:
-                - Name: Source
-        - Name: StepFunctions
-          Actions:
-            - Name: DeployStepFunctions
-              ActionTypeId:
-                Category: Deploy
-                Owner: AWS
-                Provider: CloudFormation
-                Version: "1"
-              Configuration:
-                ActionMode: CREATE_UPDATE
-                Capabilities: CAPABILITY_NAMED_IAM
-                StackName: !Sub "${ApplicationStackName}-StepFunctions"
-                TemplatePath: Source::infrastructure/application/step-functions.yaml
-                RoleArn: !GetAtt InfrastructureDeploymentRole.Arn
-                ParameterOverrides: !Sub
-                  - '{"EnvironmentName":"${EnvironmentName}","LogRetentionInDays":"${LogRetentionInDays}"}'
-                  - EnvironmentName: !Ref EnvironmentName
                     LogRetentionInDays: !Ref LogRetentionInDays
               InputArtifacts:
                 - Name: Source
