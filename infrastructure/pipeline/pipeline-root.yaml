@@ -134,13 +134,14 @@ Resources:
                   - iam:*
                   - logs:*
                   - s3:*
-                  - ssm:GetParameter
-                  - ssm:GetParameters
                   - states:*
                   - xray:*
-                Resource:
-                  - "*"
-                  - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}::parameter/aws/service/ami-amazon-linux-latest/*"
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource: !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}::parameter/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
 
   DeploymentPipeline:
     Type: AWS::CodePipeline::Pipeline
