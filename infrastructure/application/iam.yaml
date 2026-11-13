@@ -142,6 +142,17 @@ Resources:
                       - BucketArn: !ImportValue
                           Fn::Sub: "${EnvironmentName}-InputBucketArn"
 
+              - Sid: ReadPreprocessedTransactions
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Resource:
+                  - !Sub
+                      - "${BucketArn}/*"
+                      - BucketArn: !ImportValue
+                          Fn::Sub: "${EnvironmentName}-OutputBucketArn"
+
               - Sid: WriteTransactionOutput
                 Effect: Allow
                 Action:
