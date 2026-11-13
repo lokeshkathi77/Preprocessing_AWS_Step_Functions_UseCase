@@ -7,17 +7,23 @@ Parameters:
     Default: demo
 
   VpcId:
-    Type: AWS::EC2::VPC::Id
+    Type: String
+    Default: ""
 
   VpcCidr:
     Type: String
+    Default: ""
 
 Resources:
   Ec2SecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Outbound access for the EC2 preprocessing instance
-      VpcId: !Ref VpcId
+      VpcId: !If
+        - HasVpcId
+        - !Ref VpcId
+        - !ImportValue
+            Fn::Sub: "${EnvironmentName}-VpcId"
 
       SecurityGroupEgress:
         - Description: HTTPS access to AWS services
@@ -30,13 +36,21 @@ Resources:
           IpProtocol: udp
           FromPort: 53
           ToPort: 53
-          CidrIp: !Ref VpcCidr
+          CidrIp: !If
+            - HasVpcCidr
+            - !Ref VpcCidr
+            - !ImportValue
+                Fn::Sub: "${EnvironmentName}-VpcCidr"
 
         - Description: DNS over TCP to the VPC resolver
           IpProtocol: tcp
           FromPort: 53
           ToPort: 53
-          CidrIp: !Ref VpcCidr
+          CidrIp: !If
+            - HasVpcCidr
+            - !Ref VpcCidr
+            - !ImportValue
+                Fn::Sub: "${EnvironmentName}-VpcCidr"
 
       Tags:
         - Key: Name
@@ -50,7 +64,11 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Outbound access for ECS Fargate transaction tasks
-      VpcId: !Ref VpcId
+      VpcId: !If
+        - HasVpcId
+        - !Ref VpcId
+        - !ImportValue
+            Fn::Sub: "${EnvironmentName}-VpcId"
 
       SecurityGroupEgress:
         - Description: HTTPS access to ECR, S3, and CloudWatch Logs
@@ -63,13 +81,21 @@ Resources:
           IpProtocol: udp
           FromPort: 53
           ToPort: 53
-          CidrIp: !Ref VpcCidr
+          CidrIp: !If
+            - HasVpcCidr
+            - !Ref VpcCidr
+            - !ImportValue
+                Fn::Sub: "${EnvironmentName}-VpcCidr"
 
         - Description: DNS over TCP to the VPC resolver
           IpProtocol: tcp
           FromPort: 53
           ToPort: 53
-          CidrIp: !Ref VpcCidr
+          CidrIp: !If
+            - HasVpcCidr
+            - !Ref VpcCidr
+            - !ImportValue
+                Fn::Sub: "${EnvironmentName}-VpcCidr"
 
       Tags:
         - Key: Name
@@ -83,7 +109,15 @@ Outputs:
   Ec2SecurityGroupId:
     Description: EC2 preprocessing security-group ID
     Value: !Ref Ec2SecurityGroup
+    Export:
+      Name: !Sub "${EnvironmentName}-Ec2SecurityGroupId"
 
   EcsSecurityGroupId:
     Description: ECS Fargate security-group ID
     Value: !Ref EcsSecurityGroup
+    Export:
+      Name: !Sub "${EnvironmentName}-EcsSecurityGroupId"
+
+Conditions:
+  HasVpcId: !Not [!Equals [!Ref VpcId, ""]]
+  HasVpcCidr: !Not [!Equals [!Ref VpcCidr, ""]]

@@ -96,13 +96,6 @@ Resources:
                 Resource: !Ref ConnectionArn
               - Effect: Allow
                 Action:
-                  - codebuild:StartBuild
-                  - codebuild:BatchGetBuilds
-                Resource:
-                  - !GetAtt ValidationProject.Arn
-                  - !GetAtt PackagingProject.Arn
-              - Effect: Allow
-                Action:
                   - cloudformation:CreateStack
                   - cloudformation:CreateChangeSet
                   - cloudformation:DescribeChangeSet
@@ -145,86 +138,6 @@ Resources:
                   - xray:*
                 Resource: "*"
 
-  CodeBuildServiceRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: "2012-10-17"
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: codebuild.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: ValidateAndPackage
-          PolicyDocument:
-            Version: "2012-10-17"
-            Statement:
-              - Effect: Allow
-                Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: "*"
-              - Effect: Allow
-                Action:
-                  - s3:GetObject
-                  - s3:GetObjectVersion
-                  - s3:GetBucketLocation
-                  - s3:PutObject
-                  - s3:ListBucket
-                Resource:
-                  - !GetAtt ArtifactBucket.Arn
-                  - !Sub "${ArtifactBucket.Arn}/*"
-
-  ValidationProject:
-    Type: AWS::CodeBuild::Project
-    Properties:
-      Name: !Sub "${EnvironmentName}-transaction-validation"
-      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
-      Artifacts:
-        Type: CODEPIPELINE
-      Source:
-        Type: CODEPIPELINE
-        BuildSpec: buildspecs/validate.yml
-      Environment:
-        Type: LINUX_CONTAINER
-        ComputeType: BUILD_GENERAL1_SMALL
-        Image: aws/codebuild/standard:7.0
-        EnvironmentVariables:
-          - Name: AWS_REGION
-            Value: !Ref AWS::Region
-      Tags:
-        - Key: Environment
-          Value: !Ref EnvironmentName
-        - Key: Project
-          Value: TransactionWorkflow
-
-  PackagingProject:
-    Type: AWS::CodeBuild::Project
-    Properties:
-      Name: !Sub "${EnvironmentName}-transaction-packaging"
-      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
-      Artifacts:
-        Type: CODEPIPELINE
-      Source:
-        Type: CODEPIPELINE
-        BuildSpec: buildspecs/build-package.yml
-      Environment:
-        Type: LINUX_CONTAINER
-        ComputeType: BUILD_GENERAL1_SMALL
-        Image: aws/codebuild/standard:7.0
-        EnvironmentVariables:
-          - Name: ARTIFACT_BUCKET
-            Value: !Ref ArtifactBucket
-          - Name: ENVIRONMENT_NAME
-            Value: !Ref EnvironmentName
-      Tags:
-        - Key: Environment
-          Value: !Ref EnvironmentName
-        - Key: Project
-          Value: TransactionWorkflow
-
   DeploymentPipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
@@ -250,35 +163,9 @@ Resources:
                 DetectChanges: true
               OutputArtifacts:
                 - Name: Source
-        - Name: Validate
+        - Name: Network
           Actions:
-            - Name: Tests
-              ActionTypeId:
-                Category: Build
-                Owner: AWS
-                Provider: CodeBuild
-                Version: "1"
-              Configuration:
-                ProjectName: !Ref ValidationProject
-              InputArtifacts:
-                - Name: Source
-        - Name: Package
-          Actions:
-            - Name: CloudFormationPackage
-              ActionTypeId:
-                Category: Build
-                Owner: AWS
-                Provider: CodeBuild
-                Version: "1"
-              Configuration:
-                ProjectName: !Ref PackagingProject
-              InputArtifacts:
-                - Name: Source
-              OutputArtifacts:
-                - Name: Packaged
-        - Name: Deploy
-          Actions:
-            - Name: Application
+            - Name: DeployNetwork
               ActionTypeId:
                 Category: Deploy
                 Owner: AWS
@@ -287,24 +174,150 @@ Resources:
               Configuration:
                 ActionMode: CREATE_UPDATE
                 Capabilities: CAPABILITY_NAMED_IAM
-                StackName: !Ref ApplicationStackName
-                TemplatePath: Packaged::packaged-application.yaml
+                StackName: !Sub "${ApplicationStackName}-Network"
+                TemplatePath: Source::infrastructure/application/networking.yaml
                 RoleArn: !GetAtt InfrastructureDeploymentRole.Arn
                 ParameterOverrides: !Sub
                   - >-
-                    {"EnvironmentName":"${EnvironmentName}","ContainerImageUri":"${ContainerImageUri}","Ec2InstanceType":"${Ec2InstanceType}","EbsVolumeSize":"${EbsVolumeSize}","LogRetentionInDays":"${LogRetentionInDays}","PreprocessingScriptBucketName":"${ArtifactBucket}","PreprocessingScriptKey":"${EnvironmentName}/scripts/preprocess.py","VpcCidr":"${VpcCidr}","PublicSubnetACidr":"${PublicSubnetACidr}","PublicSubnetBCidr":"${PublicSubnetBCidr}","TaskCpu":"${TaskCpu}","TaskMemory":"${TaskMemory}"}
+                    {"EnvironmentName":"${EnvironmentName}","VpcCidr":"${VpcCidr}","PublicSubnetACidr":"${PublicSubnetACidr}","PublicSubnetBCidr":"${PublicSubnetBCidr}"}
                   - EnvironmentName: !Ref EnvironmentName
-                    ContainerImageUri: !Ref ContainerImageUri
-                    Ec2InstanceType: !Ref Ec2InstanceType
-                    EbsVolumeSize: !Ref EbsVolumeSize
-                    LogRetentionInDays: !Ref LogRetentionInDays
                     VpcCidr: !Ref VpcCidr
                     PublicSubnetACidr: !Ref PublicSubnetACidr
                     PublicSubnetBCidr: !Ref PublicSubnetBCidr
+              InputArtifacts:
+                - Name: Source
+        - Name: Storage
+          Actions:
+            - Name: DeployStorage
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: "1"
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_NAMED_IAM
+                StackName: !Sub "${ApplicationStackName}-Storage"
+                TemplatePath: Source::infrastructure/application/s3.yaml
+                RoleArn: !GetAtt InfrastructureDeploymentRole.Arn
+                ParameterOverrides: !Sub '{"EnvironmentName":"${EnvironmentName}"}'
+              InputArtifacts:
+                - Name: Source
+        - Name: SecurityGroups
+          Actions:
+            - Name: DeploySecurityGroups
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: "1"
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_NAMED_IAM
+                StackName: !Sub "${ApplicationStackName}-SecurityGroups"
+                TemplatePath: Source::infrastructure/application/security-groups.yaml
+                RoleArn: !GetAtt InfrastructureDeploymentRole.Arn
+                ParameterOverrides: !Sub '{"EnvironmentName":"${EnvironmentName}"}'
+              InputArtifacts:
+                - Name: Source
+        - Name: IAM
+          Actions:
+            - Name: DeployIAM
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: "1"
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_NAMED_IAM
+                StackName: !Sub "${ApplicationStackName}-IAM"
+                TemplatePath: Source::infrastructure/application/iam.yaml
+                RoleArn: !GetAtt InfrastructureDeploymentRole.Arn
+                ParameterOverrides: !Sub '{"EnvironmentName":"${EnvironmentName}"}'
+              InputArtifacts:
+                - Name: Source
+        - Name: EC2
+          Actions:
+            - Name: DeployEC2
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: "1"
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_NAMED_IAM
+                StackName: !Sub "${ApplicationStackName}-EC2"
+                TemplatePath: Source::infrastructure/application/ec2.yaml
+                RoleArn: !GetAtt InfrastructureDeploymentRole.Arn
+                ParameterOverrides: !Sub
+                  - '{"EnvironmentName":"${EnvironmentName}","InstanceType":"${Ec2InstanceType}","EbsVolumeSize":"${EbsVolumeSize}"}'
+                  - EnvironmentName: !Ref EnvironmentName
+                    Ec2InstanceType: !Ref Ec2InstanceType
+                    EbsVolumeSize: !Ref EbsVolumeSize
+              InputArtifacts:
+                - Name: Source
+        - Name: ECSCluster
+          Actions:
+            - Name: DeployECSCluster
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: "1"
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_NAMED_IAM
+                StackName: !Sub "${ApplicationStackName}-ECSCluster"
+                TemplatePath: Source::infrastructure/application/ecs-cluster.yaml
+                RoleArn: !GetAtt InfrastructureDeploymentRole.Arn
+                ParameterOverrides: !Sub '{"EnvironmentName":"${EnvironmentName}"}'
+              InputArtifacts:
+                - Name: Source
+        - Name: ECSTask
+          Actions:
+            - Name: DeployECSTask
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: "1"
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_NAMED_IAM
+                StackName: !Sub "${ApplicationStackName}-ECSTask"
+                TemplatePath: Source::infrastructure/application/ecs-task-definition.yaml
+                RoleArn: !GetAtt InfrastructureDeploymentRole.Arn
+                ParameterOverrides: !Sub
+                  - '{"EnvironmentName":"${EnvironmentName}","ContainerImageUri":"${ContainerImageUri}","TaskCpu":"${TaskCpu}","TaskMemory":"${TaskMemory}","LogRetentionInDays":"${LogRetentionInDays}"}'
+                  - EnvironmentName: !Ref EnvironmentName
+                    ContainerImageUri: !Ref ContainerImageUri
                     TaskCpu: !Ref TaskCpu
                     TaskMemory: !Ref TaskMemory
+                    LogRetentionInDays: !Ref LogRetentionInDays
               InputArtifacts:
-                - Name: Packaged
+                - Name: Source
+        - Name: StepFunctions
+          Actions:
+            - Name: DeployStepFunctions
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: "1"
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_NAMED_IAM
+                StackName: !Sub "${ApplicationStackName}-StepFunctions"
+                TemplatePath: Source::infrastructure/application/step-functions.yaml
+                RoleArn: !GetAtt InfrastructureDeploymentRole.Arn
+                ParameterOverrides: !Sub
+                  - '{"EnvironmentName":"${EnvironmentName}","LogRetentionInDays":"${LogRetentionInDays}"}'
+                  - EnvironmentName: !Ref EnvironmentName
+                    LogRetentionInDays: !Ref LogRetentionInDays
+              InputArtifacts:
+                - Name: Source
 
 Outputs:
   PipelineName:

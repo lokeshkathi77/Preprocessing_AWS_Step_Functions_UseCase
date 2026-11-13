@@ -6,18 +6,6 @@ Parameters:
     Type: String
     Default: demo
 
-  InputBucketArn:
-    Type: String
-
-  OutputBucketArn:
-    Type: String
-
-  PreprocessingScriptBucketArn:
-    Type: String
-
-  PreprocessingScriptObjectArn:
-    Type: String
-
   EcsTaskDefinitionArn:
     Type: String
     Default: "*"
@@ -51,7 +39,8 @@ Resources:
                 Action:
                   - s3:ListBucket
                 Resource:
-                  - !Ref InputBucketArn
+                  - !ImportValue
+                      Fn::Sub: "${EnvironmentName}-InputBucketArn"
 
               - Sid: ReadInputObjects
                 Effect: Allow
@@ -59,28 +48,11 @@ Resources:
                   - s3:GetObject
                   - s3:GetObjectVersion
                 Resource:
-                  - !Sub "${InputBucketArn}/*"
+                  - !Sub
+                      - "${BucketArn}/*"
+                      - BucketArn: !ImportValue
+                          Fn::Sub: "${EnvironmentName}-InputBucketArn"
 
-              - Sid: ReadPreprocessingScript
-                Effect: Allow
-                Action:
-                  - s3:GetObject
-                Resource:
-                  - !Ref PreprocessingScriptObjectArn
-
-              - Sid: LocatePreprocessingScriptBucket
-                Effect: Allow
-                Action:
-                  - s3:GetBucketLocation
-                Resource:
-                  - !Ref PreprocessingScriptBucketArn
-
-              - Sid: WritePreprocessingOutputs
-                Effect: Allow
-                Action:
-                  - s3:PutObject
-                Resource:
-                  - !Sub "${OutputBucketArn}/*"
 
       Tags:
         - Key: Environment
@@ -144,8 +116,10 @@ Resources:
                 Action:
                   - s3:ListBucket
                 Resource:
-                  - !Ref InputBucketArn
-                  - !Ref OutputBucketArn
+                  - !ImportValue
+                      Fn::Sub: "${EnvironmentName}-InputBucketArn"
+                  - !ImportValue
+                      Fn::Sub: "${EnvironmentName}-OutputBucketArn"
 
               - Sid: ReadTransactionInput
                 Effect: Allow
@@ -153,14 +127,20 @@ Resources:
                   - s3:GetObject
                   - s3:GetObjectVersion
                 Resource:
-                  - !Sub "${InputBucketArn}/*"
+                  - !Sub
+                      - "${BucketArn}/*"
+                      - BucketArn: !ImportValue
+                          Fn::Sub: "${EnvironmentName}-InputBucketArn"
 
               - Sid: WriteTransactionOutput
                 Effect: Allow
                 Action:
                   - s3:PutObject
                 Resource:
-                  - !Sub "${OutputBucketArn}/*"
+                  - !Sub
+                      - "${BucketArn}/*"
+                      - BucketArn: !ImportValue
+                          Fn::Sub: "${EnvironmentName}-OutputBucketArn"
 
       Tags:
         - Key: Environment
@@ -297,12 +277,20 @@ Outputs:
 
   Ec2InstanceProfileName:
     Value: !Ref Ec2InstanceProfile
+    Export:
+      Name: !Sub "${EnvironmentName}-Ec2InstanceProfileName"
 
   EcsTaskExecutionRoleArn:
     Value: !GetAtt EcsTaskExecutionRole.Arn
+    Export:
+      Name: !Sub "${EnvironmentName}-EcsTaskExecutionRoleArn"
 
   EcsTaskRoleArn:
     Value: !GetAtt EcsTaskRole.Arn
+    Export:
+      Name: !Sub "${EnvironmentName}-EcsTaskRoleArn"
 
   StepFunctionsRoleArn:
     Value: !GetAtt StepFunctionsExecutionRole.Arn
+    Export:
+      Name: !Sub "${EnvironmentName}-StepFunctionsRoleArn"

@@ -38,3 +38,5 @@ Outputs:
   EcsClusterArn:
     Description: ECS cluster ARN
     Value: !GetAtt TransactionCluster.Arn
+    Export:
+      Name: !Sub "${EnvironmentName}-EcsClusterArn"

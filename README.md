@@ -3,16 +3,15 @@
 This repository demonstrates a GitHub-driven AWS transaction workflow:
 
 ```text
-GitHub -> CodeConnections -> CodePipeline -> CodeBuild -> CloudFormation
+GitHub -> CodeConnections -> CodePipeline -> CloudFormation
        -> VPC, EC2, ECS, S3, Step Functions
 ```
 
-The pipeline validates the Python processor, packages the nested
-CloudFormation application template and preprocessing script, and deploys it
-with the shared `InfrastructureDeploymentRole`. The EC2 step validates or
-starts the preprocessing instance and runs `application/preprocess.py`
-directly through Systems Manager. The ECS Fargate task reads the cleaned CSV
-from S3 and writes a JSON summary to S3.
+The pipeline deploys the separate CloudFormation stacks directly from the
+GitHub source artifact with the shared `InfrastructureDeploymentRole`. The EC2
+step validates or starts the preprocessing instance and runs the
+version-controlled preprocessing script directly through Systems Manager. The
+ECS Fargate task reads the cleaned CSV from S3 and writes a JSON summary to S3.
 
 ## Deployment
 
@@ -20,9 +19,8 @@ from S3 and writes a JSON summary to S3.
    repository.
 2. Deploy `infrastructure/pipeline/pipeline-root.yaml` once with the
    connection ARN, repository ID, and existing ECR image URI.
-3. Push changes to `main`. CodePipeline runs tests, uploads the preprocessing
-   script, packages nested templates, and deploys
-   `infrastructure/application/application-root.yaml`.
+3. Push changes to `main`. CodePipeline deploys the network, storage, IAM,
+   EC2, ECS, and Step Functions stacks directly from the source artifact.
 
 The connection ARN, repository, image URI, network CIDRs, and sizing values
 are parameters. No account IDs, regions, credentials, or resource IDs are

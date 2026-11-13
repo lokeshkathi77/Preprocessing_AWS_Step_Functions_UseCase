@@ -125,15 +125,23 @@ Outputs:
   InputBucketName:
     Description: Transaction input bucket name
     Value: !Ref TransactionInputBucket
+    Export:
+      Name: !Sub "${EnvironmentName}-InputBucketName"
 
   InputBucketArn:
     Description: Transaction input bucket ARN
     Value: !GetAtt TransactionInputBucket.Arn
+    Export:
+      Name: !Sub "${EnvironmentName}-InputBucketArn"
 
   OutputBucketName:
     Description: Transaction output bucket name
     Value: !Ref TransactionOutputBucket
+    Export:
+      Name: !Sub "${EnvironmentName}-OutputBucketName"
 
   OutputBucketArn:
     Description: Transaction output bucket ARN
     Value: !GetAtt TransactionOutputBucket.Arn
+    Export:
+      Name: !Sub "${EnvironmentName}-OutputBucketArn"

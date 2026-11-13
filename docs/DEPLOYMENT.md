@@ -1,19 +1,18 @@
 # Deployment runbook
 
 The pipeline bootstrap is the only manual CloudFormation deployment. It
-creates the artifact bucket, CodeBuild projects, CodePipeline, and the shared
+creates the artifact bucket, CodePipeline, and the shared
 `InfrastructureDeploymentRole`. Later infrastructure changes are deployed by
-pushes to the configured GitHub branch. The package stage uploads
-`application/preprocess.py` to the artifact bucket; EC2 downloads and runs
-that script through Systems Manager, so Docker is not installed or used on
-EC2.
+pushes to the configured GitHub branch. CodePipeline deploys each application
+CloudFormation template directly from the source artifact; CodeBuild is not
+used.
 
 ## Prerequisites
 
 - An AWS CodeConnections connection to the GitHub repository in `AVAILABLE`
   state.
 - An existing ECR image URI for `application/Dockerfile`.
-- CodeBuild Linux/Small capacity available in the AWS account.
+- The existing CodeConnections connection is in `AVAILABLE` state.
 
 ## Bootstrap
 
@@ -47,8 +46,8 @@ regions, subnet IDs, bucket names, or image values embedded in source.
 
 ## Pipeline evidence
 
-Capture the source revision, successful Validate and Package stages, the
-CloudFormation Deploy stage, the deployment role passed to CloudFormation,
-and the resulting application stack events. For a workflow execution, also
+Capture the source revision, successful Network, Storage, SecurityGroups, IAM,
+EC2, ECSCluster, ECSTask, and StepFunctions stages, the deployment role passed
+to CloudFormation, and the resulting application stack events. For a workflow execution, also
 capture the Step Functions graph, EC2 state transition, ECS stopped task,
 CloudWatch logs, and the generated S3 summary.

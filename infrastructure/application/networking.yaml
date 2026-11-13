@@ -114,18 +114,26 @@ Outputs:
   VpcId:
     Description: Transaction VPC ID
     Value: !Ref TransactionVpc
+    Export:
+      Name: !Sub "${EnvironmentName}-VpcId"
 
   VpcCidr:
     Description: Transaction VPC CIDR
     Value: !GetAtt TransactionVpc.CidrBlock
+    Export:
+      Name: !Sub "${EnvironmentName}-VpcCidr"
 
   PublicSubnetAId:
     Description: Public subnet A ID
     Value: !Ref PublicSubnetA
+    Export:
+      Name: !Sub "${EnvironmentName}-PublicSubnetAId"
 
   PublicSubnetBId:
     Description: Public subnet B ID
     Value: !Ref PublicSubnetB
+    Export:
+      Name: !Sub "${EnvironmentName}-PublicSubnetBId"
 
   PublicRouteTableId:
     Description: Public route table ID

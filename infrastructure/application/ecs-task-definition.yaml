@@ -11,12 +11,15 @@ Parameters:
 
   EcsTaskExecutionRoleArn:
     Type: String
+    Default: ""
 
   EcsTaskRoleArn:
     Type: String
+    Default: ""
 
   OutputBucketName:
     Type: String
+    Default: ""
 
   TaskCpu:
     Type: String
@@ -57,8 +60,16 @@ Resources:
       NetworkMode: awsvpc
       Cpu: !Ref TaskCpu
       Memory: !Ref TaskMemory
-      ExecutionRoleArn: !Ref EcsTaskExecutionRoleArn
-      TaskRoleArn: !Ref EcsTaskRoleArn
+      ExecutionRoleArn: !If
+        - HasExecutionRoleArn
+        - !Ref EcsTaskExecutionRoleArn
+        - !ImportValue
+            Fn::Sub: "${EnvironmentName}-EcsTaskExecutionRoleArn"
+      TaskRoleArn: !If
+        - HasTaskRoleArn
+        - !Ref EcsTaskRoleArn
+        - !ImportValue
+            Fn::Sub: "${EnvironmentName}-EcsTaskRoleArn"
 
       RuntimePlatform:
         CpuArchitecture: X86_64
@@ -74,7 +85,11 @@ Resources:
             - Name: RUN_MODE
               Value: s3
             - Name: OUTPUT_BUCKET
-              Value: !Ref OutputBucketName
+              Value: !If
+                - HasOutputBucketName
+                - !Ref OutputBucketName
+                - !ImportValue
+                    Fn::Sub: "${EnvironmentName}-OutputBucketName"
             - Name: LOG_LEVEL
               Value: INFO
 
@@ -97,6 +112,8 @@ Outputs:
   TaskDefinitionArn:
     Description: ECS task-definition ARN
     Value: !Ref TransactionTaskDefinition
+    Export:
+      Name: !Sub "${EnvironmentName}-TaskDefinitionArn"
 
   TaskDefinitionFamily:
     Description: ECS task-definition family
@@ -109,3 +126,8 @@ Outputs:
   TransactionLogGroupName:
     Description: CloudWatch log-group name
     Value: !Ref TransactionLogGroup
+
+Conditions:
+  HasExecutionRoleArn: !Not [!Equals [!Ref EcsTaskExecutionRoleArn, ""]]
+  HasTaskRoleArn: !Not [!Equals [!Ref EcsTaskRoleArn, ""]]
+  HasOutputBucketName: !Not [!Equals [!Ref OutputBucketName, ""]]
