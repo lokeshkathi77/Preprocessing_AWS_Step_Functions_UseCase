@@ -5,7 +5,8 @@ creates the artifact bucket, CodePipeline, and the shared
 `InfrastructureDeploymentRole`. Later infrastructure changes are deployed by
 pushes to the configured GitHub branch. CodePipeline deploys each application
 CloudFormation template directly from the source artifact; CodeBuild is not
-used.
+used. The bootstrap stack must be redeployed when the CodePipeline stage
+configuration changes.
 
 ## Prerequisites
 
@@ -73,13 +74,12 @@ regions, subnet IDs, bucket names, or image values embedded in source.
 ## Pipeline evidence
 
 Capture the source revision, successful Network, Storage, SecurityGroups, IAM,
-EC2, ECSCluster, ECSTask, and StepFunctions stages, the deployment role passed
+EC2, ECSCluster, StepFunctions, and ECSTask stages, the deployment role passed
 to CloudFormation, and the resulting application stack events. For a workflow execution, also
 capture the Step Functions graph, EC2 state transition, ECS stopped task,
 CloudWatch logs, and the generated S3 summary.
 
 The Step Functions stack invokes the ECS task by its environment-specific task
-family name rather than importing a task-definition ARN export. When migrating
-an existing deployment, first deploy the Step Functions import removal while
-retaining the export; remove the now-unused export in a subsequent deployment.
-This ordering avoids CloudFormation export dependency failures.
+family name rather than importing a task-definition ARN export. Step Functions
+is deployed before the ECS task definition so task-definition revisions can be
+replaced without CloudFormation export dependency failures.

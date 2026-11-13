@@ -22,7 +22,8 @@ ECS Fargate task reads the cleaned CSV from S3 and writes a JSON summary to S3.
 3. Deploy `infrastructure/pipeline/pipeline-root.yaml` once with the
    connection ARN, repository ID, and compatible ECR image URI.
 4. Push changes to `main`. CodePipeline deploys the network, storage, IAM,
-   EC2, ECS, and Step Functions stacks directly from the source artifact.
+   EC2, ECS cluster, Step Functions, and ECS task-definition stacks directly
+   from the source artifact.
 
 The connection ARN, repository, image URI, network CIDRs, and sizing values
 are parameters. No account IDs, regions, credentials, or resource IDs are
