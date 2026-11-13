@@ -53,6 +53,16 @@ Resources:
                       - BucketArn: !ImportValue
                           Fn::Sub: "${EnvironmentName}-InputBucketArn"
 
+              - Sid: WritePreprocessingOutputs
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource:
+                  - !Sub
+                      - "${BucketArn}/*"
+                      - BucketArn: !ImportValue
+                          Fn::Sub: "${EnvironmentName}-OutputBucketArn"
+
 
       Tags:
         - Key: Environment
