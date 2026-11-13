@@ -32,7 +32,7 @@ aws ecr get-login-password --region "$AWS_REGION" |
 docker build \
   --file application/Dockerfile \
   --tag "$CONTAINER_IMAGE_URI" \
-  .
+  application
 
 docker push "$CONTAINER_IMAGE_URI"
 ```
