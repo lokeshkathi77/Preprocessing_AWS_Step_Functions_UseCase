@@ -134,9 +134,13 @@ Resources:
                   - iam:*
                   - logs:*
                   - s3:*
+                  - ssm:GetParameter
+                  - ssm:GetParameters
                   - states:*
                   - xray:*
-                Resource: "*"
+                Resource:
+                  - "*"
+                  - !Sub "arn:${AWS::Partition}:ssm:${AWS::Region}::parameter/aws/service/ami-amazon-linux-latest/*"
 
   DeploymentPipeline:
     Type: AWS::CodePipeline::Pipeline
