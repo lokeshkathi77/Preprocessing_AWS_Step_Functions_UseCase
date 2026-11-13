@@ -8,7 +8,7 @@ GitHub -> CodeConnections -> CodePipeline -> CloudFormation
 ```
 
 The pipeline deploys the separate CloudFormation stacks directly from the
-GitHub source artifact with the shared `InfrastructureDeploymentRole`. The EC2
+GitHub. The EC2
 step validates or starts the preprocessing instance and runs the
 version-controlled preprocessing script directly through Systems Manager. The
 ECS Fargate task reads the cleaned CSV from S3 and writes a JSON summary to S3.
@@ -29,12 +29,6 @@ The connection ARN, repository, image URI, network CIDRs, and sizing values
 are parameters. No account IDs, regions, credentials, or resource IDs are
 embedded in the repository.
 
-Do not use the image built from the separate `UseCase_AWS_Step_Functions`
-repository. That processor expects command-line arguments and is incompatible
-with this ECS task definition's S3 environment-variable contract.
-
-## Application contract
-
 The processor accepts CSV columns `transaction_id`, `amount`, and `currency`.
 Missing or invalid records are reported in the JSON summary; valid records are
 also included in the result. In S3 mode, set `INPUT_BUCKET`, `INPUT_KEY`,
@@ -42,22 +36,9 @@ also included in the result. In S3 mode, set `INPUT_BUCKET`, `INPUT_KEY`,
 
 Start the state machine with an input similar to:
 
-```json
-{
-  "bucket": "<input-bucket>",
-  "key": "incoming/transactions.csv",
-  "transactionDate": "2026-11-12",
-  "executionId": "daily-001"
-}
-```
 
 Step Functions validates or starts EC2, runs `application/preprocess.py`
 through Systems Manager, uploads cleaned and rejected CSV files to the output
 bucket, and then runs ECS against the cleaned CSV.
 
-## Evidence
 
-Record the GitHub revision, CodePipeline stages, CloudFormation stack events,
-EC2 state, ECS task definition revision, Step Functions execution graph,
-CloudWatch logs, and the generated S3 summary. Never capture credentials or
-real transaction data.
