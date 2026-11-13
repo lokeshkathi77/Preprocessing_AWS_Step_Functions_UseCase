@@ -14,6 +14,32 @@ used.
 - An existing ECR image URI for `application/Dockerfile`.
 - The existing CodeConnections connection is in `AVAILABLE` state.
 
+## Build the compatible ECS image
+
+Run these commands from the repository root, not from the separate
+`UseCase_AWS_Step_Functions/ecs_processor` directory:
+
+```bash
+export AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+export ECR_REGISTRY="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+export ECR_REPOSITORY="transaction-processor"
+export IMAGE_TAG="processor-$(date +%Y%m%d%H%M%S)"
+export CONTAINER_IMAGE_URI="${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
+
+aws ecr get-login-password --region "$AWS_REGION" |
+  docker login --username AWS --password-stdin "$ECR_REGISTRY"
+
+docker build \
+  --file application/Dockerfile \
+  --tag "$CONTAINER_IMAGE_URI" \
+  .
+
+docker push "$CONTAINER_IMAGE_URI"
+```
+
+This image runs `application/processor.py` with `RUN_MODE=s3`,
+`INPUT_BUCKET`, `INPUT_KEY`, and `OUTPUT_BUCKET`.
+
 ## Bootstrap
 
 Run from the repository root and supply values for the deployment context:

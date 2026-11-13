@@ -17,14 +17,20 @@ ECS Fargate task reads the cleaned CSV from S3 and writes a JSON summary to S3.
 
 1. Create or authorize an AWS CodeConnections connection to the GitHub
    repository.
-2. Deploy `infrastructure/pipeline/pipeline-root.yaml` once with the
-   connection ARN, repository ID, and existing ECR image URI.
-3. Push changes to `main`. CodePipeline deploys the network, storage, IAM,
+2. Build and push the ECS image from this repository's
+   `application/Dockerfile`.
+3. Deploy `infrastructure/pipeline/pipeline-root.yaml` once with the
+   connection ARN, repository ID, and compatible ECR image URI.
+4. Push changes to `main`. CodePipeline deploys the network, storage, IAM,
    EC2, ECS, and Step Functions stacks directly from the source artifact.
 
 The connection ARN, repository, image URI, network CIDRs, and sizing values
 are parameters. No account IDs, regions, credentials, or resource IDs are
 embedded in the repository.
+
+Do not use the image built from the separate `UseCase_AWS_Step_Functions`
+repository. That processor expects command-line arguments and is incompatible
+with this ECS task definition's S3 environment-variable contract.
 
 ## Application contract
 
