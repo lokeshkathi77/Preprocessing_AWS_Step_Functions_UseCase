@@ -112,8 +112,6 @@ Outputs:
   TaskDefinitionArn:
     Description: ECS task-definition ARN
     Value: !Ref TransactionTaskDefinition
-    Export:
-      Name: !Sub "${EnvironmentName}-TaskDefinitionArn"
 
   TaskDefinitionFamily:
     Description: ECS task-definition family

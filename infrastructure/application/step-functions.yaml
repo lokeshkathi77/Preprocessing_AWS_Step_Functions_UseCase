@@ -273,7 +273,7 @@ Resources:
                 "Resource": "arn:${AWS::Partition}:states:::ecs:runTask.sync",
                 "Parameters": {
                   "Cluster": "${EcsClusterArn}",
-                  "TaskDefinition": "${EcsTaskDefinitionArn}",
+                  "TaskDefinition": "${EnvironmentName}-transaction-processor",
                   "LaunchType": "FARGATE",
                   "PlatformVersion": "LATEST",
                   "NetworkConfiguration": {
@@ -380,8 +380,6 @@ Resources:
             Fn::Sub: "${EnvironmentName}-Ec2InstanceId"
           EcsClusterArn: !ImportValue
             Fn::Sub: "${EnvironmentName}-EcsClusterArn"
-          EcsTaskDefinitionArn: !ImportValue
-            Fn::Sub: "${EnvironmentName}-TaskDefinitionArn"
           PublicSubnetAId: !ImportValue
             Fn::Sub: "${EnvironmentName}-PublicSubnetAId"
           PublicSubnetBId: !ImportValue
