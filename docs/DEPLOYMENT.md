@@ -79,6 +79,7 @@ capture the Step Functions graph, EC2 state transition, ECS stopped task,
 CloudWatch logs, and the generated S3 summary.
 
 The Step Functions stack invokes the ECS task by its environment-specific task
-family name rather than importing a task-definition ARN export. This allows
-CloudFormation to create new ECS task-definition revisions without an export
-update dependency.
+family name rather than importing a task-definition ARN export. When migrating
+an existing deployment, first deploy the Step Functions import removal while
+retaining the export; remove the now-unused export in a subsequent deployment.
+This ordering avoids CloudFormation export dependency failures.
